@@ -1,13 +1,22 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Conciliación manual{% endblock %}
 
 {% block content %}
+<style>
+  .reconciliation-filter {
+    min-width: 8rem;
+  }
+</style>
+
 <div class="card shadow-sm">
   <div class="card-body">
-    <h1 class="h4 mb-3">Registros pendientes de conciliación</h1>
+    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 mb-3">
+      <h1 class="h4 mb-0">Registros pendientes de conciliación</h1>
+      <small class="text-muted">Mostrando <span id="visible-record-count">{{ records|length }}</span> de {{ records|length }} registros</small>
+    </div>
     <div class="table-responsive">
-      <table class="table table-sm align-middle">
+      <table class="table table-sm align-middle" id="reconciliation-table">
         <thead>
           <tr>
             <th>Nombre crudo</th>
@@ -16,10 +25,48 @@
             <th>Motivo</th>
             <th>Asignar monitor</th>
           </tr>
+          <tr>
+            <th>
+              <input
+                class="form-control form-control-sm reconciliation-filter"
+                id="filter-name"
+                placeholder="Filtrar nombre"
+                type="text"
+              >
+            </th>
+            <th>
+              <select class="form-select form-select-sm reconciliation-filter" id="filter-department">
+                <option value="">Todas</option>
+              </select>
+            </th>
+            <th>
+              <input
+                class="form-control form-control-sm reconciliation-filter"
+                id="filter-date"
+                type="date"
+              >
+            </th>
+            <th>
+              <input
+                class="form-control form-control-sm reconciliation-filter"
+                id="filter-reason"
+                placeholder="Filtrar motivo"
+                type="text"
+              >
+            </th>
+            <th>
+              <button class="btn btn-outline-secondary btn-sm" id="clear-filters" type="button">Limpiar</button>
+            </th>
+          </tr>
         </thead>
         <tbody>
           {% for record in records %}
-            <tr>
+            <tr
+              data-date="{{ record.work_day|date:'Y-m-d' }}"
+              data-department="{{ record.raw_department }}"
+              data-name="{{ record.raw_full_name }}"
+              data-reason="{{ record.manual_review_reason }}"
+            >
               <td>{{ record.raw_full_name }}</td>
               <td>{{ record.raw_department }}</td>
               <td>{{ record.work_day }}</td>
@@ -46,5 +93,90 @@
     </div>
   </div>
 </div>
-{% endblock %}
 
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    var table = document.getElementById("reconciliation-table");
+    if (!table) {
+      return;
+    }
+
+    var rows = Array.from(table.querySelectorAll("tbody tr[data-name]"));
+    var nameFilter = document.getElementById("filter-name");
+    var departmentFilter = document.getElementById("filter-department");
+    var dateFilter = document.getElementById("filter-date");
+    var reasonFilter = document.getElementById("filter-reason");
+    var clearButton = document.getElementById("clear-filters");
+    var visibleCount = document.getElementById("visible-record-count");
+
+    function normalizeValue(value) {
+      return (value || "")
+        .toString()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+    }
+
+    function populateDepartments() {
+      var departments = Array.from(
+        new Set(
+          rows
+            .map(function (row) {
+              return row.dataset.department;
+            })
+            .filter(Boolean)
+        )
+      ).sort(function (left, right) {
+        return left.localeCompare(right);
+      });
+
+      departments.forEach(function (department) {
+        var option = document.createElement("option");
+        option.value = department;
+        option.textContent = department;
+        departmentFilter.appendChild(option);
+      });
+    }
+
+    function applyFilters() {
+      var nameValue = normalizeValue(nameFilter.value);
+      var departmentValue = normalizeValue(departmentFilter.value);
+      var dateValue = dateFilter.value;
+      var reasonValue = normalizeValue(reasonFilter.value);
+      var visibleRows = 0;
+
+      rows.forEach(function (row) {
+        var matchesName = !nameValue || normalizeValue(row.dataset.name).includes(nameValue);
+        var matchesDepartment = !departmentValue || normalizeValue(row.dataset.department) === departmentValue;
+        var matchesDate = !dateValue || row.dataset.date === dateValue;
+        var matchesReason = !reasonValue || normalizeValue(row.dataset.reason).includes(reasonValue);
+        var isVisible = matchesName && matchesDepartment && matchesDate && matchesReason;
+
+        row.classList.toggle("d-none", !isVisible);
+        if (isVisible) {
+          visibleRows += 1;
+        }
+      });
+
+      visibleCount.textContent = visibleRows;
+    }
+
+    [nameFilter, departmentFilter, dateFilter, reasonFilter].forEach(function (element) {
+      element.addEventListener("input", applyFilters);
+      element.addEventListener("change", applyFilters);
+    });
+
+    clearButton.addEventListener("click", function () {
+      nameFilter.value = "";
+      departmentFilter.value = "";
+      dateFilter.value = "";
+      reasonFilter.value = "";
+      applyFilters();
+    });
+
+    populateDepartments();
+    applyFilters();
+  });
+</script>
+{% endblock %}
