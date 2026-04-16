@@ -79,11 +79,16 @@ def aggregate_monitor_metrics(*, monitor, start_date: Optional[date] = None, end
         + session_totals["approved_overtime_minutes"]
         + annotation_delta_minutes
     )
-    total_minutes = total_minutes
+    net_total_minutes = (
+        session_totals["normal_minutes"]
+        + session_totals["approved_overtime_minutes"]
+        - session_totals["penalty_minutes"]
+    )
     return {
         **session_totals,
         "annotation_delta_minutes": annotation_delta_minutes,
         "total_minutes": total_minutes,
+        "net_total_minutes": net_total_minutes,
         "has_memorandum": session_totals["late_count"] >= MEMORANDUM_THRESHOLD,
     }
 
@@ -93,11 +98,6 @@ def build_dashboard_context(user) -> dict:
     monitor_rows = []
     for monitor in monitors:
         metrics = aggregate_monitor_metrics(monitor=monitor)
-        dashboard_total_minutes = (
-            metrics["normal_minutes"]
-            + metrics["approved_overtime_minutes"]
-            - metrics["penalty_minutes"]
-        )
         metrics.update(
             {
                 "department": monitor.department,
@@ -106,7 +106,7 @@ def build_dashboard_context(user) -> dict:
                 "approved_overtime_hours": _minutes_to_hours(metrics["approved_overtime_minutes"]),
                 "pending_overtime_hours": _minutes_to_hours(metrics["pending_overtime_minutes"]),
                 "penalty_hours": _minutes_to_hours(metrics["penalty_minutes"]),
-                "total_hours": _minutes_to_hours(dashboard_total_minutes),
+                "total_hours": _minutes_to_hours(metrics["net_total_minutes"]),
             }
         )
         monitor_rows.append({"monitor": monitor, **metrics})
