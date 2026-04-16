@@ -20,6 +20,7 @@
                 <a class="nav-link" href="{% url 'leader-dashboard' %}">Dashboard</a>
                 <a class="nav-link" href="{% url 'attendance-upload' %}">Importar</a>
                 <a class="nav-link" href="{% url 'attendance-reconciliation' %}">Conciliación</a>
+                <a class="nav-link" href="{% url 'schedule-exceptions' %}">Excepciones</a>
                 <a class="nav-link" href="{% url 'overtime-review' %}">Horas extra</a>
               {% endif %}
               <form method="post" action="{% url 'logout' %}" class="d-flex align-items-center ms-2 mb-0">

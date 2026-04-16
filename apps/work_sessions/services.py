@@ -15,9 +15,100 @@ from apps.common.utils import (
     normalize_session_start,
     overlap_in_minutes,
 )
-from apps.schedules.selectors import schedule_for_monitor_and_day
+from apps.schedules.selectors import lateness_exception_for, schedule_for_monitor_and_day
 from apps.work_sessions.events import OVERTIME_PENDING, OVERTIME_REVIEWED, SESSION_PROCESSED
 from apps.work_sessions.models import WorkSession
+
+
+def _resolve_lateness(*, monitor, work_day, schedule, normalized_start):
+    late = 0
+    lateness_excused = False
+    lateness_exception = lateness_exception_for(monitor=monitor, day=work_day)
+
+    if schedule:
+        if lateness_exception is not None:
+            lateness_excused = True
+        elif normalized_start is not None:
+            late = max(duration_in_minutes(normalized_start) - duration_in_minutes(schedule.start_time), 0)
+
+    return late, lateness_excused, lateness_exception
+
+
+@transaction.atomic
+def sync_session_lateness(*, session: WorkSession) -> WorkSession:
+    normalized_start = session.normalized_start or session.actual_start
+    late, lateness_excused, lateness_exception = _resolve_lateness(
+        monitor=session.monitor,
+        work_day=session.work_day,
+        schedule=session.schedule,
+        normalized_start=normalized_start,
+    )
+    session.late_minutes = late
+    session.is_late = late > 0
+    session.lateness_excused = lateness_excused
+    session.lateness_exception = lateness_exception
+    session.save(
+        update_fields=[
+            "late_minutes",
+            "is_late",
+            "lateness_excused",
+            "lateness_exception",
+            "updated_at",
+        ]
+    )
+    return session
+
+
+@transaction.atomic
+def sync_sessions_for_exception_change(
+    *,
+    current_exception=None,
+    previous_start_date=None,
+    previous_end_date=None,
+    previous_department=None,
+) -> int:
+    start_candidates = [
+        value
+        for value in [
+            getattr(current_exception, "start_date", None),
+            previous_start_date,
+        ]
+        if value is not None
+    ]
+    end_candidates = [
+        value
+        for value in [
+            getattr(current_exception, "end_date", None),
+            previous_end_date,
+        ]
+        if value is not None
+    ]
+    if not start_candidates or not end_candidates:
+        return 0
+
+    start_date = min(start_candidates)
+    end_date = max(end_candidates)
+    queryset = (
+        WorkSession.objects.select_related("monitor", "schedule")
+        .filter(work_day__gte=start_date, work_day__lte=end_date)
+        .order_by("work_day", "monitor__full_name")
+    )
+
+    current_department = getattr(current_exception, "department", None)
+    if previous_department and current_department:
+        queryset = queryset.filter(monitor__department__in={previous_department, current_department})
+    elif previous_department is None or current_department is None:
+        queryset = queryset
+    elif previous_department:
+        queryset = queryset.filter(monitor__department=previous_department)
+    elif current_department:
+        queryset = queryset.filter(monitor__department=current_department)
+
+    updated_sessions = 0
+    for session in queryset.iterator():
+        sync_session_lateness(session=session)
+        updated_sessions += 1
+    return updated_sessions
 
 
 @transaction.atomic
@@ -42,13 +133,20 @@ def process_raw_record_to_session(*, raw_record):
     scheduled_end = None
     normal = 0
     late = 0
+    lateness_excused = False
+    lateness_exception = None
     session_state = SessionStateChoices.PROCESSED
 
     if schedule:
         scheduled_start = combine_day_and_time(raw_record.work_day, schedule.start_time)
         scheduled_end = combine_day_and_time(raw_record.work_day, schedule.end_time)
         normal = overlap_in_minutes(normalized_start, normalized_end, schedule.start_time, schedule.end_time)
-        late = max(duration_in_minutes(normalized_start) - duration_in_minutes(schedule.start_time), 0)
+        late, lateness_excused, lateness_exception = _resolve_lateness(
+            monitor=raw_record.monitor,
+            work_day=raw_record.work_day,
+            schedule=schedule,
+            normalized_start=normalized_start,
+        )
     else:
         session_state = SessionStateChoices.WITHOUT_SCHEDULE
 
@@ -72,6 +170,8 @@ def process_raw_record_to_session(*, raw_record):
         overtime_minutes=overtime,
         late_minutes=late,
         is_late=late > 0,
+        lateness_excused=lateness_excused,
+        lateness_exception=lateness_exception,
         session_state=session_state,
         overtime_status=overtime_status,
     )

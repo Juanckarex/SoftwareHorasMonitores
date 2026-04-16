@@ -8,6 +8,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from apps.attendance.views import AttendanceImportView, ReconciliationQueueView
 from apps.reports.views import LeaderDashboardView, PublicMonitorLookupView
+from apps.schedules.views import ScheduleExceptionListView
 from apps.work_sessions.views import OvertimeReviewListView
 
 
@@ -23,6 +24,7 @@ urlpatterns = [
     path("dashboard/", LeaderDashboardView.as_view(), name="leader-dashboard"),
     path("imports/upload/", AttendanceImportView.as_view(), name="attendance-upload"),
     path("imports/reconciliation/", ReconciliationQueueView.as_view(), name="attendance-reconciliation"),
+    path("excepciones/", ScheduleExceptionListView.as_view(), name="schedule-exceptions"),
     path("overtime/review/", OvertimeReviewListView.as_view(), name="overtime-review"),
     path("consulta/", PublicMonitorLookupView.as_view(), name="public-monitor-lookup"),
     path("api/schema/", SpectacularAPIView.as_view(), name="api-schema"),

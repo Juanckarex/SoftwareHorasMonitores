@@ -5,8 +5,8 @@ from django.urls import path, reverse
 
 from apps.common.choices import DepartmentChoices
 from apps.schedules.forms import ScheduleImportForm
-from apps.schedules.models import Schedule
-from apps.schedules.services import import_schedules_from_workbook
+from apps.schedules.models import Schedule, ScheduleException
+from apps.schedules.services import delete_schedule_exception, import_schedules_from_workbook, save_schedule_exception
 
 
 class MonitorDepartmentFilter(admin.SimpleListFilter):
@@ -71,3 +71,38 @@ class ScheduleAdmin(admin.ModelAdmin):
             "form": form,
         }
         return render(request, "admin/schedules/schedule/import_form.html", context)
+
+
+@admin.register(ScheduleException)
+class ScheduleExceptionAdmin(admin.ModelAdmin):
+    list_display = ("name", "department", "start_date", "end_date", "ignore_lateness", "is_active")
+    list_filter = ("department", "ignore_lateness", "is_active")
+    search_fields = ("name", "description")
+
+    def save_model(self, request, obj, form, change):
+        obj, updated_sessions = save_schedule_exception(
+            actor=request.user,
+            instance=obj if change else None,
+            name=form.cleaned_data["name"],
+            description=form.cleaned_data["description"],
+            start_date=form.cleaned_data["start_date"],
+            end_date=form.cleaned_data["end_date"],
+            department=form.cleaned_data["department"],
+            ignore_lateness=form.cleaned_data["ignore_lateness"],
+            is_active=form.cleaned_data["is_active"],
+        )
+        if updated_sessions:
+            self.message_user(
+                request,
+                f"Se recalcularon {updated_sessions} sesiones afectadas por esta excepción.",
+                level=messages.INFO,
+            )
+
+    def delete_model(self, request, obj):
+        updated_sessions = delete_schedule_exception(actor=request.user, exception=obj)
+        if updated_sessions:
+            self.message_user(
+                request,
+                f"Se recalcularon {updated_sessions} sesiones tras eliminar la excepción.",
+                level=messages.INFO,
+            )

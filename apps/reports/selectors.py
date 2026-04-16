@@ -136,7 +136,7 @@ def public_monitor_lookup(*, codigo_estudiante: str, department: str):
     metrics = aggregate_monitor_metrics(monitor=monitor)
     recent_sessions = (
         WorkSession.objects.filter(monitor=monitor)
-        .select_related("raw_record")
+        .select_related("raw_record", "lateness_exception")
         .order_by("-work_day", "-actual_start")[:20]
     )
     return {

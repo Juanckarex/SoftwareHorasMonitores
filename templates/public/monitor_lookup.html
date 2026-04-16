@@ -133,6 +133,7 @@
             `Extra` son horas fuera del turno;
             `Penalización` son horas descontadas;
             `Retraso` es tardanza frente al inicio esperado.
+            Si aparece `Exento`, hubo una excepción activa y ese retardo no se contó.
           </div>
           <div class="table-responsive">
             <table class="table table-sm table-hover lookup-history-table">
@@ -157,7 +158,12 @@
                     <td class="text-center">{{ session.normal_minutes|minutes_to_hours }}</td>
                     <td class="text-center">{{ session.overtime_minutes|minutes_to_hours }}</td>
                     <td class="text-center">{{ session.penalty_minutes|minutes_to_hours }}</td>
-                    <td class="text-center">{{ session.late_minutes|minutes_to_hours }}</td>
+                    <td class="text-center">
+                      {{ session.late_minutes|minutes_to_hours }}
+                      {% if session.lateness_excused %}
+                        <div><span class="badge text-bg-info mt-1">Exento</span></div>
+                      {% endif %}
+                    </td>
                     <td>
                       {% if session.overtime_status == "approved" %}
                         <span class="badge text-bg-success">{{ session.get_overtime_status_display }}</span>
@@ -167,6 +173,9 @@
                         <span class="badge text-bg-danger">{{ session.get_overtime_status_display }}</span>
                       {% else %}
                         <span class="badge text-bg-secondary">{{ session.get_overtime_status_display }}</span>
+                      {% endif %}
+                      {% if session.lateness_excused and session.lateness_exception %}
+                        <div class="small text-muted mt-1">{{ session.lateness_exception.name }}</div>
                       {% endif %}
                     </td>
                   </tr>

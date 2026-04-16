@@ -7,9 +7,11 @@ from django.core.exceptions import ValidationError
 from openpyxl import load_workbook
 
 from apps.attendance.validators import validate_excel_extension
+from apps.common.choices import UserRoleChoices
 from apps.common.utils import normalize_text
 from apps.monitors.models import Monitor
-from apps.schedules.models import Schedule
+from apps.schedules.models import Schedule, ScheduleException
+from apps.work_sessions.services import sync_sessions_for_exception_change
 
 
 DAY_NAME_TO_WEEKDAY = {
@@ -142,6 +144,70 @@ def upsert_schedule(*, monitor, weekday: int, start_time, end_time, is_active: b
         },
     )
     return schedule
+
+
+def _validate_exception_scope(*, actor, department) -> None:
+    if actor.role == UserRoleChoices.ADMIN:
+        return
+    if not actor.department or department != actor.department:
+        raise ValidationError("Solo puedes gestionar excepciones de tu propia dependencia.")
+
+
+def save_schedule_exception(
+    *,
+    actor,
+    instance: Optional[ScheduleException] = None,
+    name: str,
+    description: str,
+    start_date,
+    end_date,
+    department,
+    ignore_lateness: bool,
+    is_active: bool,
+):
+    _validate_exception_scope(actor=actor, department=department)
+    exception = instance or ScheduleException()
+    previous_state = None
+    if instance is not None and instance.pk:
+        previous = ScheduleException.objects.get(pk=instance.pk)
+        previous_state = {
+            "start_date": previous.start_date,
+            "end_date": previous.end_date,
+            "department": previous.department,
+        }
+
+    exception.name = name
+    exception.description = description
+    exception.start_date = start_date
+    exception.end_date = end_date
+    exception.department = department
+    exception.ignore_lateness = ignore_lateness
+    exception.is_active = is_active
+    exception.full_clean()
+    exception.save()
+
+    updated_sessions = sync_sessions_for_exception_change(
+        current_exception=exception,
+        previous_start_date=previous_state["start_date"] if previous_state else None,
+        previous_end_date=previous_state["end_date"] if previous_state else None,
+        previous_department=previous_state["department"] if previous_state else None,
+    )
+    return exception, updated_sessions
+
+
+def delete_schedule_exception(*, actor, exception: ScheduleException) -> int:
+    _validate_exception_scope(actor=actor, department=exception.department)
+    previous_state = {
+        "start_date": exception.start_date,
+        "end_date": exception.end_date,
+        "department": exception.department,
+    }
+    exception.delete()
+    return sync_sessions_for_exception_change(
+        previous_start_date=previous_state["start_date"],
+        previous_end_date=previous_state["end_date"],
+        previous_department=previous_state["department"],
+    )
 
 
 def import_schedules_from_workbook(*, uploaded_file) -> ScheduleImportResult:
