@@ -1,0 +1,61 @@
+services:
+  web:
+    build:
+      context: .
+    command: web
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - ./dropzone:/app/dropzone
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+
+  celery_worker:
+    build:
+      context: .
+    command: worker
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - ./dropzone:/app/dropzone
+    depends_on:
+      - db
+      - redis
+
+  celery_beat:
+    build:
+      context: .
+    command: beat
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - ./dropzone:/app/dropzone
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: monitores
+      POSTGRES_USER: monitores
+      POSTGRES_PASSWORD: monitores
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:
+

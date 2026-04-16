@@ -1,0 +1,73 @@
+﻿{% extends "base.html" %}
+{% load common_extras %}
+
+{% block title %}Consulta pública{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-4">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h1 class="h4 mb-3">Consulta pública de horas</h1>
+        <form method="post">
+          {% csrf_token %}
+          {{ form.as_p }}
+          <button class="btn btn-primary" type="submit">Consultar</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-8">
+    {% if result %}
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <h2 class="h5">{{ result.monitor.full_name }}</h2>
+          <p class="mb-1">Código: {{ result.monitor.codigo_estudiante }}</p>
+          <p class="mb-0">Dependencia: {{ result.monitor.get_department_display }}</p>
+        </div>
+      </div>
+      <div class="row g-3">
+        <div class="col-md-4"><div class="card shadow-sm"><div class="card-body"><strong>Horas turno (h)</strong><br>{{ result.metrics.normal_minutes|minutes_to_hours }}</div></div></div>
+        <div class="col-md-4"><div class="card shadow-sm"><div class="card-body"><strong>Horas extra (h)</strong><br>{{ result.metrics.approved_overtime_minutes|minutes_to_hours }}</div></div></div>
+        <div class="col-md-4"><div class="card shadow-sm"><div class="card-body"><strong>Pendientes (h)</strong><br>{{ result.metrics.pending_overtime_minutes|minutes_to_hours }}</div></div></div>
+        <div class="col-md-4"><div class="card shadow-sm"><div class="card-body"><strong>Penalizaciones (h)</strong><br>{{ result.metrics.penalty_minutes|minutes_to_hours }}</div></div></div>
+        <div class="col-md-4"><div class="card shadow-sm"><div class="card-body"><strong>Retrasos</strong><br>{{ result.metrics.late_count }}</div></div></div>
+        <div class="col-md-4"><div class="card shadow-sm"><div class="card-body"><strong>Memorando</strong><br>{% if result.metrics.has_memorandum %}Sí{% else %}No{% endif %}</div></div></div>
+      </div>
+      <div class="card shadow-sm mt-4">
+        <div class="card-body">
+          <h3 class="h5">Historial relevante</h3>
+          <div class="table-responsive">
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Normales (h)</th>
+                  <th>Extra (h)</th>
+                  <th>Penalización (h)</th>
+                  <th>Retraso (h)</th>
+                  <th>Estado extra</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for session in result.recent_sessions %}
+                  <tr>
+                    <td>{{ session.work_day }}</td>
+                    <td>{{ session.normal_minutes|minutes_to_hours }}</td>
+                    <td>{{ session.overtime_minutes|minutes_to_hours }}</td>
+                    <td>{{ session.penalty_minutes|minutes_to_hours }}</td>
+                    <td>{{ session.late_minutes|minutes_to_hours }}</td>
+                    <td>{{ session.get_overtime_status_display }}</td>
+                  </tr>
+                {% empty %}
+                  <tr><td colspan="6">Sin historial.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

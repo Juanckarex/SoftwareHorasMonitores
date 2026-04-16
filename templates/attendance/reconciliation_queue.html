@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Conciliación manual{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h1 class="h4 mb-3">Registros pendientes de conciliación</h1>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th>Nombre crudo</th>
+            <th>Dependencia</th>
+            <th>Fecha</th>
+            <th>Motivo</th>
+            <th>Asignar monitor</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for record in records %}
+            <tr>
+              <td>{{ record.raw_full_name }}</td>
+              <td>{{ record.raw_department }}</td>
+              <td>{{ record.work_day }}</td>
+              <td>{{ record.manual_review_reason }}</td>
+              <td>
+                <form method="post" class="d-flex gap-2">
+                  {% csrf_token %}
+                  <input type="hidden" name="raw_record_id" value="{{ record.id }}">
+                  <select class="form-select form-select-sm" name="monitor_id" required>
+                    <option value="">Selecciona</option>
+                    {% for monitor in monitor_options %}
+                      <option value="{{ monitor.id }}">{{ monitor.full_name }}</option>
+                    {% endfor %}
+                  </select>
+                  <button class="btn btn-sm btn-primary" type="submit">Vincular</button>
+                </form>
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5">No hay registros pendientes.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+

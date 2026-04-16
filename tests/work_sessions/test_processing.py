@@ -1,0 +1,116 @@
+from datetime import datetime
+
+import pytest
+from django.utils import timezone
+
+from apps.work_sessions.services import process_raw_record_to_session
+from tests.factories import AttendanceRawRecordFactory, MonitorFactory, ScheduleFactory
+
+
+@pytest.mark.django_db
+def test_process_raw_record_calculates_normal_overtime_and_lateness():
+    monitor = MonitorFactory(full_name="Ana Torres")
+    ScheduleFactory(monitor=monitor, weekday=0)
+    raw_record = AttendanceRawRecordFactory(
+        monitor=monitor,
+        raw_full_name="Ana Torres",
+        entry_at=timezone.make_aware(datetime(2026, 4, 13, 8, 7)),
+        exit_at=timezone.make_aware(datetime(2026, 4, 13, 12, 30)),
+    )
+
+    session = process_raw_record_to_session(raw_record=raw_record)
+
+    assert session.normalized_start.isoformat() == "08:30:00"
+    assert session.normalized_end.isoformat() == "12:30:00"
+    assert session.normal_minutes == 210
+    assert session.overtime_minutes == 30
+    assert session.late_minutes == 30
+    assert session.is_late is True
+
+
+@pytest.mark.django_db
+def test_process_raw_record_rounds_late_arrival_of_45_minutes_to_full_hour():
+    monitor = MonitorFactory(full_name="Ana Torres")
+    ScheduleFactory(monitor=monitor, weekday=0)
+    raw_record = AttendanceRawRecordFactory(
+        monitor=monitor,
+        raw_full_name="Ana Torres",
+        entry_at=timezone.make_aware(datetime(2026, 4, 13, 8, 45)),
+        exit_at=timezone.make_aware(datetime(2026, 4, 13, 12, 0)),
+    )
+
+    session = process_raw_record_to_session(raw_record=raw_record)
+
+    assert session.normalized_start.isoformat() == "09:00:00"
+    assert session.normalized_end.isoformat() == "12:00:00"
+    assert session.normal_minutes == 180
+    assert session.overtime_minutes == 0
+    assert session.late_minutes == 60
+
+
+@pytest.mark.django_db
+def test_process_raw_record_rounds_exit_after_45_minutes_to_next_hour():
+    monitor = MonitorFactory(full_name="Ana Torres")
+    ScheduleFactory(monitor=monitor, weekday=0, start_time=datetime(2026, 4, 13, 16, 0).time(), end_time=datetime(2026, 4, 13, 22, 0).time())
+    raw_record = AttendanceRawRecordFactory(
+        monitor=monitor,
+        raw_full_name="Ana Torres",
+        work_day=datetime(2026, 4, 13).date(),
+        entry_at=timezone.make_aware(datetime(2026, 4, 13, 16, 4, 55)),
+        exit_at=timezone.make_aware(datetime(2026, 4, 13, 21, 57, 45)),
+    )
+
+    session = process_raw_record_to_session(raw_record=raw_record)
+
+    assert session.normalized_start.isoformat() == "16:00:00"
+    assert session.normalized_end.isoformat() == "22:00:00"
+    assert session.normal_minutes == 360
+    assert session.overtime_minutes == 0
+    assert session.late_minutes == 0
+
+
+@pytest.mark.django_db
+def test_process_raw_record_uses_matching_schedule_when_monitor_has_multiple_blocks_in_day():
+    monitor = MonitorFactory(full_name="Esteban Alexander Bautista Solano")
+    ScheduleFactory(monitor=monitor, weekday=4, start_time=datetime(2026, 2, 13, 6, 0).time(), end_time=datetime(2026, 2, 13, 8, 0).time())
+    matching_schedule = ScheduleFactory(
+        monitor=monitor,
+        weekday=4,
+        start_time=datetime(2026, 2, 13, 12, 0).time(),
+        end_time=datetime(2026, 2, 13, 16, 0).time(),
+    )
+    raw_record = AttendanceRawRecordFactory(
+        monitor=monitor,
+        raw_full_name=monitor.full_name,
+        work_day=datetime(2026, 2, 13).date(),
+        entry_at=timezone.make_aware(datetime(2026, 2, 13, 12, 0)),
+        exit_at=timezone.make_aware(datetime(2026, 2, 13, 16, 0)),
+    )
+
+    session = process_raw_record_to_session(raw_record=raw_record)
+
+    assert session.schedule == matching_schedule
+    assert session.normal_minutes == 240
+    assert session.overtime_minutes == 0
+    assert session.session_state == "processed"
+
+
+@pytest.mark.django_db
+def test_process_raw_record_without_overlap_does_not_pick_unrelated_schedule():
+    monitor = MonitorFactory(full_name="Esteban Alexander Bautista Solano")
+    ScheduleFactory(monitor=monitor, weekday=4, start_time=datetime(2026, 2, 13, 6, 0).time(), end_time=datetime(2026, 2, 13, 8, 0).time())
+    ScheduleFactory(monitor=monitor, weekday=4, start_time=datetime(2026, 2, 13, 12, 0).time(), end_time=datetime(2026, 2, 13, 16, 0).time())
+    raw_record = AttendanceRawRecordFactory(
+        monitor=monitor,
+        raw_full_name=monitor.full_name,
+        work_day=datetime(2026, 2, 13).date(),
+        entry_at=timezone.make_aware(datetime(2026, 2, 13, 18, 0)),
+        exit_at=timezone.make_aware(datetime(2026, 2, 13, 20, 0)),
+    )
+
+    session = process_raw_record_to_session(raw_record=raw_record)
+
+    assert session.schedule is None
+    assert session.normal_minutes == 0
+    assert session.overtime_minutes == 120
+    assert session.session_state == "without_schedule"

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% load common_extras %}
+
+{% block title %}Revisión de horas extra{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h1 class="h4 mb-3">Horas extra pendientes</h1>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th>Monitor</th>
+            <th>Fecha</th>
+            <th>Horas extra</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for session in sessions %}
+            <tr>
+              <td>{{ session.monitor.full_name }}</td>
+              <td>{{ session.work_day }}</td>
+              <td>{{ session.overtime_minutes|minutes_to_hours }} h</td>
+              <td>
+                <form method="post" class="row g-2">
+                  {% csrf_token %}
+                  <input type="hidden" name="session_id" value="{{ session.id }}">
+                  <div class="col-auto">
+                    <select class="form-select form-select-sm" name="decision">
+                      <option value="approve">Aprobar</option>
+                      <option value="reject">Rechazar</option>
+                    </select>
+                  </div>
+                  <div class="col">
+                    <input class="form-control form-control-sm" name="note" placeholder="Anotación si rechaza">
+                  </div>
+                  <div class="col-auto">
+                    <button class="btn btn-sm btn-primary" type="submit">Guardar</button>
+                  </div>
+                </form>
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="4">No hay horas extra pendientes.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
