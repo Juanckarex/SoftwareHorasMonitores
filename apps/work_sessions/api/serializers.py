@@ -37,3 +37,4 @@ class WorkSessionSerializer(serializers.ModelSerializer):
 class OvertimeDecisionSerializer(serializers.Serializer):
     decision = serializers.ChoiceField(choices=("approve", "reject"))
     note = serializers.CharField(required=False, allow_blank=True)
+    penalize_on_reject = serializers.BooleanField(required=False, default=True)

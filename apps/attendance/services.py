@@ -13,7 +13,7 @@ from openpyxl import load_workbook
 from apps.attendance.events import ATTENDANCE_IMPORTED, ATTENDANCE_RECONCILIATION_FAILED
 from apps.attendance.models import AttendanceImportJob, AttendanceRawRecord
 from apps.attendance.validators import coerce_date, coerce_datetime, resolve_headers, validate_excel_extension, coerce_time
-from apps.common.choices import ImportJobStatusChoices, ReconciliationStatusChoices
+from apps.common.choices import DepartmentChoices, ImportJobStatusChoices, ReconciliationStatusChoices, UserRoleChoices
 from apps.common.events import DomainEvent, event_bus
 from apps.common.permissions import department_allowed
 from apps.common.utils import normalize_text
@@ -21,9 +21,101 @@ from apps.monitors.models import Monitor
 
 logger = logging.getLogger(__name__)
 
+DEPARTMENT_LABELS = {
+    DepartmentChoices.PHYSICS: "Monitores Fisica",
+    DepartmentChoices.INFORMATICS_LABS: "Monitores Aulas de Software",
+    DepartmentChoices.ELECTRICAL: "Monitores Laboratorios",
+}
+
+
+def _rewind_uploaded_file(uploaded_file) -> None:
+    if hasattr(uploaded_file, "seek"):
+        uploaded_file.seek(0)
+
+
+def _department_label(value: str) -> str:
+    return DEPARTMENT_LABELS.get(value, value or "sin dependencia")
+
+
+def _match_monitor_queryset(*, raw_full_name: str, raw_department: str):
+    mapped_department = _map_department(normalize_text(raw_department))
+    queryset = Monitor.objects.filter(
+        normalized_full_name=normalize_text(raw_full_name),
+        is_active=True,
+    )
+    if mapped_department is not None:
+        queryset = queryset.filter(department=mapped_department)
+    return queryset
+
+
+def _preview_workbook_departments(uploaded_file) -> tuple[set[str], dict[int, str]]:
+    workbook = None
+    try:
+        _rewind_uploaded_file(uploaded_file)
+        workbook = load_workbook(uploaded_file, read_only=True, data_only=True)
+        worksheet = workbook.active
+        rows = worksheet.iter_rows(values_only=True)
+        headers = next(rows, None)
+        if not headers:
+            raise ValidationError("El archivo esta vacio.")
+
+        header_map = resolve_headers([str(item) for item in headers])
+        detected_departments: set[str] = set()
+        unknown_rows: dict[int, str] = {}
+
+        for row_number, row in enumerate(rows, start=2):
+            if not any(value is not None and str(value).strip() for value in row):
+                continue
+
+            raw_department = str(row[header_map["department"]] or "").strip()
+            mapped_department = _map_department(normalize_text(raw_department))
+            if mapped_department is None:
+                unknown_rows[row_number] = raw_department or "(vacio)"
+                continue
+            detected_departments.add(mapped_department)
+
+        return detected_departments, unknown_rows
+    except ValidationError:
+        raise
+    except Exception as exc:
+        raise ValidationError(f"No fue posible validar el archivo Excel antes de subirlo: {exc}")
+    finally:
+        if workbook is not None:
+            workbook.close()
+        _rewind_uploaded_file(uploaded_file)
+
+def _validate_import_scope(*, uploaded_file, uploaded_by=None) -> None:
+    if uploaded_by is None or uploaded_by.role != UserRoleChoices.LEADER:
+        return
+    if not uploaded_by.department:
+        raise ValidationError("El lider no tiene una dependencia configurada para subir registros.")
+
+    detected_departments, unknown_rows = _preview_workbook_departments(uploaded_file)
+    if unknown_rows:
+        sample_rows = ", ".join(
+            f"fila {row_number}: {value}" for row_number, value in sorted(unknown_rows.items())[:3]
+        )
+    
+        raise ValidationError(
+            "No se pudo validar la dependencia del archivo. "
+            f"Revisa la columna Departamento. Valores no reconocidos: {sample_rows}."
+        )
+
+    foreign_departments = sorted(
+        department for department in detected_departments if department != uploaded_by.department
+    )
+    if foreign_departments:
+        foreign_labels = ", ".join(_department_label(department) for department in foreign_departments)
+        raise ValidationError(
+            f"Solo puedes subir registros de {_department_label(uploaded_by.department)}. "
+            f"El archivo contiene filas de: {foreign_labels}."
+        )
+
+
 
 def create_import_job(*, uploaded_file, uploaded_by=None) -> AttendanceImportJob:
     validate_excel_extension(uploaded_file.name)
+    _validate_import_scope(uploaded_file=uploaded_file, uploaded_by=uploaded_by)
     return AttendanceImportJob.objects.create(
         uploaded_by=uploaded_by,
         source_file=uploaded_file,
@@ -67,10 +159,12 @@ def _existing_raw_record_for_import(
 
 
 def _match_monitor(raw_record: AttendanceRawRecord) -> Tuple[Optional[Monitor], str]:
-    matches = Monitor.objects.filter(
-        normalized_full_name=raw_record.normalized_full_name
-        # department=_map_department(raw_record.normalized_department),
-        # is_active=True,
+    mapped_department = _map_department(raw_record.normalized_department)
+    if mapped_department is None:
+        return None, "La dependencia del registro no coincide con ninguna dependencia configurada."
+    matches = _match_monitor_queryset(
+        raw_full_name=raw_record.raw_full_name,
+        raw_department=raw_record.raw_department,
     )
     if matches.count() == 1:
         return matches.first(), ""
@@ -81,12 +175,18 @@ def _match_monitor(raw_record: AttendanceRawRecord) -> Tuple[Optional[Monitor], 
 
 def _map_department(normalized_department: str) -> Optional[str]:
     mapping = {
+        "monitores": "informatics_labs",
+        "monitorias": "informatics_labs",
         "fisica": "physics",
+        "monitores fisica": "physics",
         "physics": "physics",
-        "salas de informatica": "informatics_labs",
+        "Monitores Aulas de sistemas": "informatics_labs",
         "salas informatica": "informatics_labs",
         "informatica": "informatics_labs",
         "informatics labs": "informatics_labs",
+        "monitores laboratorios": "electrical",
+        "monitores laboratorio": "electrical",
+        "laboratorios": "electrical",
         "electrica": "electrical",
         "electrical": "electrical",
     }
@@ -187,10 +287,11 @@ def import_workbook(job: AttendanceImportJob) -> AttendanceImportJob:
                         existing_raw_record.id,
                     )
                     continue
-                try:
-                    monitor = Monitor.objects.get(normalized_full_name=normalize_text(raw_full_name))
-                except Monitor.DoesNotExist:
-                    monitor = None
+                matched_monitors = _match_monitor_queryset(
+                    raw_full_name=raw_full_name,
+                    raw_department=raw_department,
+                )
+                monitor = matched_monitors.first() if matched_monitors.count() == 1 else None
                 raw_record = AttendanceRawRecord.objects.create(
                     import_job=job,
                     row_number=row_number,

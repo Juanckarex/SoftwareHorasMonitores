@@ -32,12 +32,12 @@ class ReconciliationQueueView(AdminOrLeaderRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        records = pending_reconciliation_records_for_user(self.request.user)
+        records = pending_reconciliation_records_for_user(self.request.user).order_by("-work_day", "raw_full_name")
         if self.request.user.role != UserRoleChoices.ADMIN:
             monitors = Monitor.objects.filter(department=self.request.user.department, is_active=True)
         else:
             monitors = Monitor.objects.filter(is_active=True)
-        context["records"] = records[:100]
+        context["records"] = records
         context["monitor_options"] = monitors.order_by("full_name")
         return context
 

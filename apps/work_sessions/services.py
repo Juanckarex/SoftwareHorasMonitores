@@ -208,7 +208,14 @@ def process_raw_record_to_session(*, raw_record):
 
 
 @transaction.atomic
-def review_overtime(*, session: WorkSession, reviewer, decision: str, note: str = "") -> WorkSession:
+def review_overtime(
+    *,
+    session: WorkSession,
+    reviewer,
+    decision: str,
+    note: str = "",
+    penalize_on_reject: bool = True,
+) -> WorkSession:
     if reviewer.role not in {UserRoleChoices.ADMIN, UserRoleChoices.LEADER}:
         raise ValidationError("Solo administradores o líderes pueden revisar horas extra.")
     if not department_allowed(reviewer, session.monitor.department):
@@ -224,19 +231,20 @@ def review_overtime(*, session: WorkSession, reviewer, decision: str, note: str 
         if not note:
             raise ValidationError("Rechazar horas extra requiere una anotación obligatoria.")
         session.overtime_status = OvertimeStatusChoices.REJECTED
-        session.penalty_minutes = session.overtime_minutes
-        from apps.annotations.services import create_annotation
+        session.penalty_minutes = 0
+        if penalize_on_reject:
+            from apps.annotations.services import create_annotation
 
-        create_annotation(
-            leader=reviewer,
-            monitor=session.monitor,
-            session=session,
-            annotation_type="novelty",
-            description=note,
-            action="deduct",
-            delta_minutes=-session.overtime_minutes,
-            occurred_on=session.work_day,
-        )
+            create_annotation(
+                leader=reviewer,
+                monitor=session.monitor,
+                session=session,
+                annotation_type="novelty",
+                description=note,
+                action="deduct",
+                delta_minutes=-session.overtime_minutes,
+                occurred_on=session.work_day,
+            )
     else:
         raise ValidationError("Decisión inválida.")
 

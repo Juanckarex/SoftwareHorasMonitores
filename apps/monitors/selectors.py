@@ -13,9 +13,8 @@ def visible_monitors_for_user(user) -> QuerySet[Monitor]:
     return queryset.filter(department=user.department)
 
 
-def active_monitor_by_code_and_department(code: str, department: str) -> Optional[Monitor]:
+def active_monitor_by_code(code: str) -> Optional[Monitor]:
     return Monitor.objects.filter(
         codigo_estudiante=code,
-        department=department,
         is_active=True,
     ).first()

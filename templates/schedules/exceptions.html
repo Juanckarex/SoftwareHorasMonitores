@@ -19,6 +19,20 @@
   .exception-table th {
     vertical-align: middle;
   }
+
+  .exception-description {
+    max-width: 18rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .exception-pager {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
 </style>
 
 <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 mb-4">
@@ -32,6 +46,16 @@
     {% else %}
       Como líder solo puedes crear excepciones para {{ request.user.get_department_display }}.
     {% endif %}
+  </div>
+</div>
+
+<div class="alert alert-light border mb-4">
+  <strong>Estados de las excepciones:</strong>
+  <div class="small text-muted mt-2">
+    <div><strong>Vigente:</strong> la excepción está activa y la fecha actual está dentro del rango.</div>
+    <div><strong>Programada:</strong> la excepción está activa, pero su fecha inicial todavía no llega.</div>
+    <div><strong>Activa:</strong> la excepción sigue marcada como activa, aunque su rango de fechas ya terminó.</div>
+    <div><strong>Inactiva:</strong> la excepción está desactivada y no aplica sobre las sesiones.</div>
   </div>
 </div>
 
@@ -108,11 +132,11 @@
             <h2 class="h5 mb-1">Excepciones registradas</h2>
             <p class="text-muted mb-0 small">Se muestran las más recientes visibles para tu usuario.</p>
           </div>
-          <span class="badge text-bg-light">{{ exceptions|length }} visibles</span>
+          <span class="badge text-bg-light"><span id="exception-visible-count">{{ exceptions|length }}</span> visibles</span>
         </div>
 
         <div class="table-responsive">
-          <table class="table table-sm exception-table">
+          <table class="table table-sm exception-table" id="exceptions-table">
             <thead>
               <tr>
                 <th>Nombre</th>
@@ -125,11 +149,11 @@
             </thead>
             <tbody>
               {% for row in exceptions %}
-                <tr>
+                <tr class="exception-row">
                   <td>
                     <strong>{{ row.item.name }}</strong>
                     {% if row.item.description %}
-                      <div class="text-muted small mt-1">{{ row.item.description }}</div>
+                      <div class="text-muted small mt-1 exception-description">{{ row.item.description }}</div>
                     {% endif %}
                   </td>
                   <td>{{ row.scope_label }}</td>
@@ -138,13 +162,7 @@
                     <span class="text-muted small">hasta {{ row.item.end_date }}</span>
                   </td>
                   <td>
-                    {% if row.item.is_active and row.is_current %}
-                      <span class="badge text-bg-success exception-status-badge">Vigente</span>
-                    {% elif row.item.is_active %}
-                      <span class="badge text-bg-secondary exception-status-badge">Programada</span>
-                    {% else %}
-                      <span class="badge text-bg-dark exception-status-badge">Inactiva</span>
-                    {% endif %}
+                    <span class="badge {{ row.status.badge_class }} exception-status-badge">{{ row.status.label }}</span>
                   </td>
                   <td>
                     {% if row.item.ignore_lateness %}
@@ -177,8 +195,56 @@
             </tbody>
           </table>
         </div>
+        <div class="exception-pager mt-3">
+          <small class="text-muted">
+            Pagina <span id="exception-page-current">1</span> de <span id="exception-page-total">1</span>
+          </small>
+          <div class="d-inline-flex gap-2">
+            <button class="btn btn-sm btn-outline-secondary" id="exception-page-prev" type="button">Anterior</button>
+            <button class="btn btn-sm btn-outline-secondary" id="exception-page-next" type="button">Siguiente</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 </div>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    var rows = Array.from(document.querySelectorAll("#exceptions-table .exception-row"));
+    var visibleCount = document.getElementById("exception-visible-count");
+    var currentLabel = document.getElementById("exception-page-current");
+    var totalLabel = document.getElementById("exception-page-total");
+    var prevButton = document.getElementById("exception-page-prev");
+    var nextButton = document.getElementById("exception-page-next");
+    var pageSize = 8;
+    var currentPage = 1;
+
+    function renderPage(page) {
+      var totalPages = Math.max(Math.ceil(rows.length / pageSize), 1);
+      currentPage = Math.min(Math.max(page, 1), totalPages);
+      var start = (currentPage - 1) * pageSize;
+      var end = start + pageSize;
+
+      rows.forEach(function (row, index) {
+        row.classList.toggle("d-none", !(index >= start && index < end));
+      });
+
+      visibleCount.textContent = rows.length;
+      currentLabel.textContent = currentPage;
+      totalLabel.textContent = totalPages;
+      prevButton.disabled = currentPage <= 1;
+      nextButton.disabled = currentPage >= totalPages;
+    }
+
+    prevButton.addEventListener("click", function () {
+      renderPage(currentPage - 1);
+    });
+
+    nextButton.addEventListener("click", function () {
+      renderPage(currentPage + 1);
+    });
+
+    renderPage(1);
+  });
+</script>
 {% endblock %}

@@ -44,7 +44,10 @@ class ScheduleAdmin(admin.ModelAdmin):
         if request.method == "POST":
             form = ScheduleImportForm(request.POST, request.FILES)
             if form.is_valid():
-                result = import_schedules_from_workbook(uploaded_file=form.cleaned_data["source_file"])
+                result = import_schedules_from_workbook(
+                    uploaded_file=form.cleaned_data["source_file"],
+                    actor=request.user,
+                )
                 messages.success(
                     request,
                     (
@@ -59,6 +62,14 @@ class ScheduleAdmin(admin.ModelAdmin):
                     messages.warning(
                         request,
                         "No se encontraron estos monitores: " + ", ".join(result.missing_monitors[:10]),
+                    )
+                if result.unauthorized_monitors:
+                    level = messages.ERROR if result.processed_monitors == 0 else messages.WARNING
+                    messages.add_message(
+                        request,
+                        level,
+                        "No tienes permiso para importar horarios de estos monitores: "
+                        + ", ".join(result.unauthorized_monitors[:10]),
                     )
                 return HttpResponseRedirect(reverse("admin:schedules_schedule_changelist"))
         else:

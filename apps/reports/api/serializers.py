@@ -5,6 +5,7 @@ from apps.reports.models import MonitorReportSnapshot
 
 class MonitorReportSnapshotSerializer(serializers.ModelSerializer):
     monitor_name = serializers.CharField(source="monitor.full_name", read_only=True)
+    remaining_minutes = serializers.SerializerMethodField()
 
     class Meta:
         model = MonitorReportSnapshot
@@ -22,13 +23,22 @@ class MonitorReportSnapshotSerializer(serializers.ModelSerializer):
             "late_count",
             "annotation_delta_minutes",
             "total_minutes",
+            "remaining_minutes",
             "has_memorandum",
             "created_at",
         )
+
+    def get_remaining_minutes(self, obj):
+        target_minutes = 192 * 60
+        completed_minutes = (
+            obj.normal_minutes
+            + obj.approved_overtime_minutes
+            + obj.annotation_delta_minutes
+        )
+        return max(target_minutes - completed_minutes, 0)
 
 
 class GenerateReportSerializer(serializers.Serializer):
     monitor_id = serializers.UUIDField()
     start_date = serializers.DateField()
     end_date = serializers.DateField()
-

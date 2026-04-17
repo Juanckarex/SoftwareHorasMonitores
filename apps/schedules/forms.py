@@ -27,8 +27,8 @@ class ScheduleExceptionForm(forms.ModelForm):
             "is_active",
         )
         widgets = {
-            "start_date": forms.DateInput(attrs={"type": "date"}),
-            "end_date": forms.DateInput(attrs={"type": "date"}),
+            "start_date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
+            "end_date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
             "description": forms.Textarea(attrs={"rows": 3}),
         }
         labels = {
@@ -44,6 +44,8 @@ class ScheduleExceptionForm(forms.ModelForm):
     def __init__(self, *args, actor=None, **kwargs):
         self.actor = actor
         super().__init__(*args, **kwargs)
+        self.fields["start_date"].input_formats = ["%Y-%m-%d"]
+        self.fields["end_date"].input_formats = ["%Y-%m-%d"]
         for name, field in self.fields.items():
             if isinstance(field.widget, forms.CheckboxInput):
                 field.widget.attrs["class"] = "form-check-input"

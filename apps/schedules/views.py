@@ -14,6 +14,32 @@ from apps.schedules.services import delete_schedule_exception, save_schedule_exc
 class ScheduleExceptionListView(AdminOrLeaderRequiredMixin, TemplateView):
     template_name = "schedules/exceptions.html"
 
+    @staticmethod
+    def _exception_status(*, exception, today):
+        if not exception.is_active:
+            return {
+                "label": "Inactiva",
+                "badge_class": "text-bg-dark",
+                "description": "La excepción está desactivada y no afecta sesiones.",
+            }
+        if exception.start_date <= today <= exception.end_date:
+            return {
+                "label": "Vigente",
+                "badge_class": "text-bg-success",
+                "description": "La excepción está activa y hoy sí aplica dentro del rango.",
+            }
+        if exception.start_date > today:
+            return {
+                "label": "Programada",
+                "badge_class": "text-bg-secondary",
+                "description": "La excepción está activa, pero todavía no ha empezado.",
+            }
+        return {
+            "label": "Activa",
+            "badge_class": "text-bg-primary",
+            "description": "La excepción sigue activa en el sistema, aunque su rango de fechas ya terminó.",
+        }
+
     def _selected_exception(self):
         exception_id = self.request.GET.get("edit") or self.request.POST.get("exception_id")
         if not exception_id:
@@ -36,15 +62,16 @@ class ScheduleExceptionListView(AdminOrLeaderRequiredMixin, TemplateView):
         context["form"] = kwargs.get("form") or self._build_form(instance=editing_exception)
         context["editing_exception"] = editing_exception
         context["today"] = timezone.localdate()
-        context["exceptions"] = [
+        exceptions = [
             {
                 "item": exception,
                 "can_manage": self._can_manage_exception(exception),
                 "scope_label": exception.get_department_display() if exception.department else "Todas las dependencias",
-                "is_current": exception.start_date <= context["today"] <= exception.end_date,
+                "status": self._exception_status(exception=exception, today=context["today"]),
             }
-            for exception in visible_schedule_exceptions_for_user(self.request.user)[:100]
+            for exception in visible_schedule_exceptions_for_user(self.request.user)
         ]
+        context["exceptions"] = exceptions
         return context
 
     def post(self, request, *args, **kwargs):

@@ -7,16 +7,41 @@
   .reconciliation-filter {
     min-width: 8rem;
   }
+
+  .reconciliation-table th:last-child,
+  .reconciliation-table td:last-child {
+    width: 21rem;
+  }
+
+  .reconciliation-action {
+    align-items: center;
+  }
+
+  .reconciliation-action .btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+    min-width: 7.25rem;
+  }
+
+  .reconciliation-pager {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
 </style>
 
 <div class="card shadow-sm">
   <div class="card-body">
     <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 mb-3">
       <h1 class="h4 mb-0">Registros pendientes de conciliación</h1>
-      <small class="text-muted">Mostrando <span id="visible-record-count">{{ records|length }}</span> de {{ records|length }} registros</small>
+      <small class="text-muted">
+        Mostrando <span id="visible-record-count">{{ records|length }}</span> registros visibles.
+      </small>
     </div>
     <div class="table-responsive">
-      <table class="table table-sm align-middle" id="reconciliation-table">
+      <table class="table table-sm align-middle reconciliation-table" id="reconciliation-table">
         <thead>
           <tr>
             <th>Nombre crudo</th>
@@ -72,7 +97,7 @@
               <td>{{ record.work_day }}</td>
               <td>{{ record.manual_review_reason }}</td>
               <td>
-                <form method="post" class="d-flex gap-2">
+                <form method="post" class="d-flex flex-wrap gap-2 reconciliation-action">
                   {% csrf_token %}
                   <input type="hidden" name="raw_record_id" value="{{ record.id }}">
                   <select class="form-select form-select-sm" name="monitor_id" required>
@@ -91,6 +116,15 @@
         </tbody>
       </table>
     </div>
+    <div class="reconciliation-pager mt-3">
+      <small class="text-muted">
+        Pagina <span id="reconciliation-page-current">1</span> de <span id="reconciliation-page-total">1</span>
+      </small>
+      <div class="d-inline-flex gap-2">
+        <button class="btn btn-sm btn-outline-secondary" id="reconciliation-page-prev" type="button">Anterior</button>
+        <button class="btn btn-sm btn-outline-secondary" id="reconciliation-page-next" type="button">Siguiente</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -108,6 +142,12 @@
     var reasonFilter = document.getElementById("filter-reason");
     var clearButton = document.getElementById("clear-filters");
     var visibleCount = document.getElementById("visible-record-count");
+    var pageCurrent = document.getElementById("reconciliation-page-current");
+    var pageTotal = document.getElementById("reconciliation-page-total");
+    var prevButton = document.getElementById("reconciliation-page-prev");
+    var nextButton = document.getElementById("reconciliation-page-next");
+    var currentPage = 1;
+    var pageSize = 10;
 
     function normalizeValue(value) {
       return (value || "")
@@ -139,12 +179,37 @@
       });
     }
 
+    function renderPage(page) {
+      var filteredRows = rows.filter(function (row) {
+        return row.dataset.filterHidden !== "true";
+      });
+      var totalPages = Math.max(Math.ceil(filteredRows.length / pageSize), 1);
+      currentPage = Math.min(Math.max(page, 1), totalPages);
+      var start = (currentPage - 1) * pageSize;
+      var end = start + pageSize;
+
+      rows.forEach(function (row) {
+        row.classList.add("d-none");
+      });
+
+      filteredRows.forEach(function (row, index) {
+        if (index >= start && index < end) {
+          row.classList.remove("d-none");
+        }
+      });
+
+      visibleCount.textContent = filteredRows.length;
+      pageCurrent.textContent = currentPage;
+      pageTotal.textContent = totalPages;
+      prevButton.disabled = currentPage <= 1;
+      nextButton.disabled = currentPage >= totalPages;
+    }
+
     function applyFilters() {
       var nameValue = normalizeValue(nameFilter.value);
       var departmentValue = normalizeValue(departmentFilter.value);
       var dateValue = dateFilter.value;
       var reasonValue = normalizeValue(reasonFilter.value);
-      var visibleRows = 0;
 
       rows.forEach(function (row) {
         var matchesName = !nameValue || normalizeValue(row.dataset.name).includes(nameValue);
@@ -152,14 +217,9 @@
         var matchesDate = !dateValue || row.dataset.date === dateValue;
         var matchesReason = !reasonValue || normalizeValue(row.dataset.reason).includes(reasonValue);
         var isVisible = matchesName && matchesDepartment && matchesDate && matchesReason;
-
-        row.classList.toggle("d-none", !isVisible);
-        if (isVisible) {
-          visibleRows += 1;
-        }
+        row.dataset.filterHidden = isVisible ? "false" : "true";
       });
-
-      visibleCount.textContent = visibleRows;
+      renderPage(1);
     }
 
     [nameFilter, departmentFilter, dateFilter, reasonFilter].forEach(function (element) {
@@ -175,7 +235,18 @@
       applyFilters();
     });
 
+    prevButton.addEventListener("click", function () {
+      renderPage(currentPage - 1);
+    });
+
+    nextButton.addEventListener("click", function () {
+      renderPage(currentPage + 1);
+    });
+
     populateDepartments();
+    rows.forEach(function (row) {
+      row.dataset.filterHidden = "false";
+    });
     applyFilters();
   });
 </script>

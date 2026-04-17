@@ -22,7 +22,9 @@ class LeaderDashboardAPIView(views.APIView):
                     "normal_minutes": row["normal_minutes"],
                     "approved_overtime_minutes": row["approved_overtime_minutes"],
                     "pending_overtime_minutes": row["pending_overtime_minutes"],
+                    "annotation_delta_minutes": row["annotation_delta_minutes"],
                     "penalty_minutes": row["penalty_minutes"],
+                    "remaining_minutes": row["remaining_minutes"],
                     "late_count": row["late_count"],
                     "has_memorandum": row["has_memorandum"],
                 }
@@ -36,6 +38,18 @@ class LeaderDashboardAPIView(views.APIView):
                     "overtime_minutes": session.overtime_minutes,
                 }
                 for session in context["pending_overtime"]
+            ],
+            "recent_annotations": [
+                {
+                    "id": str(annotation.id),
+                    "monitor_name": annotation.monitor.full_name,
+                    "annotation_type": annotation.annotation_type,
+                    "action": annotation.action,
+                    "delta_minutes": annotation.delta_minutes,
+                    "occurred_on": annotation.occurred_on,
+                    "description": annotation.description,
+                }
+                for annotation in context["recent_annotations"]
             ],
             "notifications": [
                 {
@@ -85,8 +99,7 @@ class PublicMonitorLookupAPIView(views.APIView):
 
     def get(self, request):
         code = request.query_params.get("codigo_estudiante", "")
-        department = request.query_params.get("department", "")
-        result = public_monitor_lookup(codigo_estudiante=code, department=department)
+        result = public_monitor_lookup(codigo_estudiante=code)
         if not result:
             return response.Response({"detail": "Monitor no encontrado."}, status=status.HTTP_404_NOT_FOUND)
         payload = {

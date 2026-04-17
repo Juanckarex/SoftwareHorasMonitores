@@ -6,8 +6,14 @@ from django.shortcuts import redirect
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from apps.annotations.views import AnnotationManagementView
 from apps.attendance.views import AttendanceImportView, ReconciliationQueueView
-from apps.reports.views import LeaderDashboardView, PublicMonitorLookupView
+from apps.reports.views import (
+    DepartmentDashboardExportView,
+    LeaderDashboardView,
+    MonitorRecordsDetailView,
+    PublicMonitorLookupView,
+)
 from apps.schedules.views import ScheduleExceptionListView
 from apps.work_sessions.views import OvertimeReviewListView
 
@@ -22,8 +28,19 @@ urlpatterns = [
     path("login/", LoginView.as_view(template_name="registration/login.html"), name="login"),
     path("logout/", LogoutView.as_view(next_page="public-monitor-lookup"), name="logout"),
     path("dashboard/", LeaderDashboardView.as_view(), name="leader-dashboard"),
+    path(
+        "dashboard/monitor/<uuid:monitor_id>/registros/",
+        MonitorRecordsDetailView.as_view(),
+        name="dashboard-monitor-records",
+    ),
+    path(
+        "dashboard/departamento/<str:department>/excel/",
+        DepartmentDashboardExportView.as_view(),
+        name="dashboard-department-export",
+    ),
     path("imports/upload/", AttendanceImportView.as_view(), name="attendance-upload"),
     path("imports/reconciliation/", ReconciliationQueueView.as_view(), name="attendance-reconciliation"),
+    path("anotaciones/", AnnotationManagementView.as_view(), name="annotations-manage"),
     path("excepciones/", ScheduleExceptionListView.as_view(), name="schedule-exceptions"),
     path("overtime/review/", OvertimeReviewListView.as_view(), name="overtime-review"),
     path("consulta/", PublicMonitorLookupView.as_view(), name="public-monitor-lookup"),

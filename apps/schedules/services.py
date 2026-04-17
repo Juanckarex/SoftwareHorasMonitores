@@ -46,6 +46,7 @@ class ScheduleImportResult:
     processed_monitors: int = 0
     skipped_rows: int = 0
     missing_monitors: list[str] = field(default_factory=list)
+    unauthorized_monitors: list[str] = field(default_factory=list)
 
 
 def _row_label_value(row_values: list[str], target_label: str) -> Optional[str]:
@@ -115,18 +116,35 @@ def _save_schedule_block(*, monitor: Monitor, block: ParsedScheduleBlock, result
         result.reactivated += 1
 
 
+def _validate_schedule_import_scope(*, actor, monitor: Monitor) -> None:
+    if actor is None or actor.role == UserRoleChoices.ADMIN:
+        return
+    if actor.role != UserRoleChoices.LEADER or not actor.department:
+        raise ValidationError("Solo administradores y lideres pueden importar horarios.")
+    if monitor.department != actor.department:
+        raise ValidationError("Solo puedes importar horarios de tu propia dependencia.")
+
+
 def _flush_monitor_blocks(
     *,
     monitor_code: Optional[str],
     monitor_name: Optional[str],
     blocks: list[ParsedScheduleBlock],
     result: ScheduleImportResult,
+    actor=None,
 ) -> None:
     if not monitor_code or not blocks:
         return
     monitor = Monitor.objects.filter(codigo_estudiante=str(monitor_code).strip()).first()
     if monitor is None:
         result.missing_monitors.append(f"{monitor_name or 'Sin nombre'} ({monitor_code})")
+        return
+    try:
+        _validate_schedule_import_scope(actor=actor, monitor=monitor)
+    except ValidationError:
+        result.unauthorized_monitors.append(
+            f"{monitor.full_name} ({monitor.codigo_estudiante}) - {monitor.get_department_display()}"
+        )
         return
     for block in _merge_schedule_blocks(blocks):
         _save_schedule_block(monitor=monitor, block=block, result=result)
@@ -210,7 +228,7 @@ def delete_schedule_exception(*, actor, exception: ScheduleException) -> int:
     )
 
 
-def import_schedules_from_workbook(*, uploaded_file) -> ScheduleImportResult:
+def import_schedules_from_workbook(*, uploaded_file, actor=None) -> ScheduleImportResult:
     validate_excel_extension(uploaded_file.name)
     workbook = load_workbook(uploaded_file, read_only=True, data_only=True)
     worksheet = workbook.active
@@ -233,6 +251,7 @@ def import_schedules_from_workbook(*, uploaded_file) -> ScheduleImportResult:
                 monitor_name=current_monitor_name,
                 blocks=current_blocks,
                 result=result,
+                actor=actor,
             )
             current_monitor_name = monitor_name
             current_monitor_code = None
@@ -268,5 +287,6 @@ def import_schedules_from_workbook(*, uploaded_file) -> ScheduleImportResult:
         monitor_name=current_monitor_name,
         blocks=current_blocks,
         result=result,
+        actor=actor,
     )
     return result

@@ -7,7 +7,7 @@ from openpyxl import Workbook
 from apps.common.choices import DepartmentChoices
 from apps.schedules.models import Schedule
 from apps.schedules.services import import_schedules_from_workbook
-from tests.factories import MonitorFactory
+from tests.factories import UserFactory, MonitorFactory
 
 
 def build_schedule_workbook(rows):
@@ -91,3 +91,29 @@ def test_import_schedules_from_workbook_is_idempotent_for_existing_blocks():
     schedule = schedules.get()
     assert schedule.start_time.isoformat() == "08:00:00"
     assert schedule.end_time.isoformat() == "12:00:00"
+
+
+@pytest.mark.django_db
+def test_leader_cannot_import_schedules_for_other_department():
+    leader = UserFactory(department=DepartmentChoices.PHYSICS)
+    monitor = MonitorFactory(
+        codigo_estudiante="20211009999",
+        full_name="LAURA CASTRO",
+        department=DepartmentChoices.ELECTRICAL,
+    )
+    workbook = build_schedule_workbook(
+        [
+            ["", "NOMBRE:", monitor.full_name],
+            ["", "CODIGO:", monitor.codigo_estudiante],
+            ["", "ASIGNATURA", "GRUPO", "DOCENTE", "PROYECTO CURRICULAR", "DIA/HORA", "LABORATORIO"],
+            ["", "CIRCUITOS", "1", "DOCENTE 1", "ING ELECTRONICA", "JUEVES 8-10", "LAB A"],
+        ]
+    )
+
+    result = import_schedules_from_workbook(uploaded_file=workbook, actor=leader)
+
+    assert result.processed_monitors == 0
+    assert result.unauthorized_monitors == [
+        f"{monitor.full_name} ({monitor.codigo_estudiante}) - {monitor.get_department_display()}"
+    ]
+    assert Schedule.objects.filter(monitor=monitor).count() == 0
