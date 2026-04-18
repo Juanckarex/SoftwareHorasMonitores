@@ -146,3 +146,13 @@ New-NetFirewallRule -DisplayName "Allow Django 8000 10.20.150" `
 Añadir en RemoteAddress las direcciones o subredes que se quieran permitir
 
 Agregar en .env en ALLOWED_HOSTS la direccion 10.20.150.11
+
+
+
+## Solucionar problemas con docker/entrypoint.sh
+
+```powershell
+$content = Get-Content D:\Monitores\docker\entrypoint.sh -Raw
+$content = $content -replace "`r`n", "`n"
+[System.IO.File]::WriteAllText("D:\Monitores\docker\entrypoint.sh", $content)
+```
