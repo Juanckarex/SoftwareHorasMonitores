@@ -3,7 +3,7 @@ from django.db import models
 
 class DepartmentChoices(models.TextChoices):
     PHYSICS = "physics", "Monitores Fisica"
-    INFORMATICS_LABS = "informatics_labs", "Monitores"
+    INFORMATICS_LABS = "informatics_labs", "Monitores Aulas de Software"
     ELECTRICAL = "electrical", "Monitores Laboratorios"
 
 

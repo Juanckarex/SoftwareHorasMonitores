@@ -122,3 +122,27 @@ El comando `python manage.py seed_initial_data` crea:
 Ejecuta `pytest tests`.
 
 Si estas en Windows y aparece un problema con carpetas temporales o cache de `pytest`, limpia las carpetas temporales del workspace y vuelve a correr la suite con un `--basetemp` dentro de un directorio que tengas controlado.
+
+
+## BLOQUEO DE DIRECCIONES
+Powershell Admin
+
+New-NetFirewallRule -DisplayName "Block Django 8000 10.20.160" `
+  -Direction Inbound `
+  -Protocol TCP `
+  -LocalPort 8000 `
+  -Action Block `
+  -RemoteAddress Any
+
+Añadir en RemoteAddress las direcciones o subredes que se quieran bloquear
+
+New-NetFirewallRule -DisplayName "Allow Django 8000 10.20.150" `
+  -Direction Inbound `
+  -Protocol TCP `
+  -LocalPort 8000 `
+  -Action Allow `
+  -RemoteAddress 10.20.150.0/24 
+
+Añadir en RemoteAddress las direcciones o subredes que se quieran permitir
+
+Agregar en .env en ALLOWED_HOSTS la direccion 10.20.150.11

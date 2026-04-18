@@ -11,7 +11,6 @@ from apps.common.utils import normalize_text
 SUPPORTED_EXTENSIONS = {".xlsx", ".xlsm"}
 HEADER_ALIASES = {
     "departamento": "department",
-    "departmento": "department",
     "nro._usuario": "num_user",
     "nro_usuario": "num_user",
     "numero_de_usuario": "num_user",
@@ -58,7 +57,7 @@ def resolve_headers(headers: List[str]) -> Dict[str, int]:
         if alias and alias not in mapping:
             mapping[alias] = index
     missing = {
-        "department",
+        "Departmento",
         "num_user",
         "id_user",
         "full_name",
