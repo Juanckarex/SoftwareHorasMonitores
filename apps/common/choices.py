@@ -2,9 +2,9 @@ from django.db import models
 
 
 class DepartmentChoices(models.TextChoices):
-    PHYSICS = "physics", "Física"
-    INFORMATICS_LABS = "informatics_labs", "Salas de Informática"
-    ELECTRICAL = "electrical", "Eléctrica"
+    PHYSICS = "physics", "Monitores Fisica"
+    INFORMATICS_LABS = "informatics_labs", "Monitores Aulas de Software"
+    ELECTRICAL = "electrical", "Monitores Laboratorios"
 
 
 class UserRoleChoices(models.TextChoices):

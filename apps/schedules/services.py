@@ -7,9 +7,11 @@ from django.core.exceptions import ValidationError
 from openpyxl import load_workbook
 
 from apps.attendance.validators import validate_excel_extension
+from apps.common.choices import UserRoleChoices
 from apps.common.utils import normalize_text
 from apps.monitors.models import Monitor
-from apps.schedules.models import Schedule
+from apps.schedules.models import Schedule, ScheduleException
+from apps.work_sessions.services import sync_sessions_for_exception_change
 
 
 DAY_NAME_TO_WEEKDAY = {
@@ -44,6 +46,7 @@ class ScheduleImportResult:
     processed_monitors: int = 0
     skipped_rows: int = 0
     missing_monitors: list[str] = field(default_factory=list)
+    unauthorized_monitors: list[str] = field(default_factory=list)
 
 
 def _row_label_value(row_values: list[str], target_label: str) -> Optional[str]:
@@ -113,18 +116,35 @@ def _save_schedule_block(*, monitor: Monitor, block: ParsedScheduleBlock, result
         result.reactivated += 1
 
 
+def _validate_schedule_import_scope(*, actor, monitor: Monitor) -> None:
+    if actor is None or actor.role == UserRoleChoices.ADMIN:
+        return
+    if actor.role != UserRoleChoices.LEADER or not actor.department:
+        raise ValidationError("Solo administradores y lideres pueden importar horarios.")
+    if monitor.department != actor.department:
+        raise ValidationError("Solo puedes importar horarios de tu propia dependencia.")
+
+
 def _flush_monitor_blocks(
     *,
     monitor_code: Optional[str],
     monitor_name: Optional[str],
     blocks: list[ParsedScheduleBlock],
     result: ScheduleImportResult,
+    actor=None,
 ) -> None:
     if not monitor_code or not blocks:
         return
     monitor = Monitor.objects.filter(codigo_estudiante=str(monitor_code).strip()).first()
     if monitor is None:
         result.missing_monitors.append(f"{monitor_name or 'Sin nombre'} ({monitor_code})")
+        return
+    try:
+        _validate_schedule_import_scope(actor=actor, monitor=monitor)
+    except ValidationError:
+        result.unauthorized_monitors.append(
+            f"{monitor.full_name} ({monitor.codigo_estudiante}) - {monitor.get_department_display()}"
+        )
         return
     for block in _merge_schedule_blocks(blocks):
         _save_schedule_block(monitor=monitor, block=block, result=result)
@@ -144,7 +164,73 @@ def upsert_schedule(*, monitor, weekday: int, start_time, end_time, is_active: b
     return schedule
 
 
-def import_schedules_from_workbook(*, uploaded_file) -> ScheduleImportResult:
+def _validate_exception_scope(*, actor, department) -> None:
+    if actor.role == UserRoleChoices.ADMIN:
+        return
+    if not actor.department or department != actor.department:
+        raise ValidationError("Solo puedes gestionar excepciones de tu propia dependencia.")
+
+
+def save_schedule_exception(
+    *,
+    actor,
+    instance: Optional[ScheduleException] = None,
+    name: str,
+    description: str,
+    start_date,
+    end_date,
+    department,
+    ignore_lateness: bool,
+    approve_overtime: bool,
+    is_active: bool,
+):
+    _validate_exception_scope(actor=actor, department=department)
+    exception = instance or ScheduleException()
+    previous_state = None
+    if instance is not None and instance.pk:
+        previous = ScheduleException.objects.get(pk=instance.pk)
+        previous_state = {
+            "start_date": previous.start_date,
+            "end_date": previous.end_date,
+            "department": previous.department,
+        }
+
+    exception.name = name
+    exception.description = description
+    exception.start_date = start_date
+    exception.end_date = end_date
+    exception.department = department
+    exception.ignore_lateness = ignore_lateness
+    exception.approve_overtime = approve_overtime
+    exception.is_active = is_active
+    exception.full_clean()
+    exception.save()
+
+    updated_sessions = sync_sessions_for_exception_change(
+        current_exception=exception,
+        previous_start_date=previous_state["start_date"] if previous_state else None,
+        previous_end_date=previous_state["end_date"] if previous_state else None,
+        previous_department=previous_state["department"] if previous_state else None,
+    )
+    return exception, updated_sessions
+
+
+def delete_schedule_exception(*, actor, exception: ScheduleException) -> int:
+    _validate_exception_scope(actor=actor, department=exception.department)
+    previous_state = {
+        "start_date": exception.start_date,
+        "end_date": exception.end_date,
+        "department": exception.department,
+    }
+    exception.delete()
+    return sync_sessions_for_exception_change(
+        previous_start_date=previous_state["start_date"],
+        previous_end_date=previous_state["end_date"],
+        previous_department=previous_state["department"],
+    )
+
+
+def import_schedules_from_workbook(*, uploaded_file, actor=None) -> ScheduleImportResult:
     validate_excel_extension(uploaded_file.name)
     workbook = load_workbook(uploaded_file, read_only=True, data_only=True)
     worksheet = workbook.active
@@ -167,6 +253,7 @@ def import_schedules_from_workbook(*, uploaded_file) -> ScheduleImportResult:
                 monitor_name=current_monitor_name,
                 blocks=current_blocks,
                 result=result,
+                actor=actor,
             )
             current_monitor_name = monitor_name
             current_monitor_code = None
@@ -202,5 +289,6 @@ def import_schedules_from_workbook(*, uploaded_file) -> ScheduleImportResult:
         monitor_name=current_monitor_name,
         blocks=current_blocks,
         result=result,
+        actor=actor,
     )
     return result

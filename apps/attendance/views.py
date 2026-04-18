@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404, redirect
@@ -21,7 +22,35 @@ class AttendanceImportView(AdminOrLeaderRequiredMixin, FormView):
         try:
             job = create_import_job(uploaded_file=form.cleaned_data["file"], uploaded_by=self.request.user)
             process_import_job.delay(str(job.id))
-            messages.success(self.request, "Archivo cargado. La importación quedó en cola.")
+            if getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False):
+                job.refresh_from_db()
+                skipped_rows = max(job.total_rows - job.imported_rows - job.failed_rows, 0)
+                if job.failed_rows:
+                    messages.warning(
+                        self.request,
+                        (
+                            f"Archivo procesado. Importadas: {job.imported_rows}, "
+                            f"omitidas: {skipped_rows}, con error: {job.failed_rows}."
+                        ),
+                    )
+                elif job.imported_rows == 0 and skipped_rows:
+                    messages.info(
+                        self.request,
+                        (
+                            "Archivo procesado, pero no se agregaron registros nuevos. "
+                            f"Se omitieron {skipped_rows} filas porque ya existian."
+                        ),
+                    )
+                else:
+                    messages.success(
+                        self.request,
+                        (
+                            f"Archivo procesado. Importadas: {job.imported_rows}, "
+                            f"omitidas: {skipped_rows}, con error: {job.failed_rows}."
+                        ),
+                    )
+            else:
+                messages.success(self.request, "Archivo cargado. La importacion quedo en cola.")
         except ValidationError as exc:
             messages.error(self.request, "; ".join(exc.messages))
         return redirect("attendance-upload")
@@ -32,12 +61,12 @@ class ReconciliationQueueView(AdminOrLeaderRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        records = pending_reconciliation_records_for_user(self.request.user)
+        records = pending_reconciliation_records_for_user(self.request.user).order_by("-work_day", "raw_full_name")
         if self.request.user.role != UserRoleChoices.ADMIN:
             monitors = Monitor.objects.filter(department=self.request.user.department, is_active=True)
         else:
             monitors = Monitor.objects.filter(is_active=True)
-        context["records"] = records[:100]
+        context["records"] = records
         context["monitor_options"] = monitors.order_by("full_name")
         return context
 
@@ -49,7 +78,7 @@ class ReconciliationQueueView(AdminOrLeaderRequiredMixin, TemplateView):
             from apps.work_sessions.services import process_raw_record_to_session
 
             process_raw_record_to_session(raw_record=raw_record)
-            messages.success(request, "Conciliación manual aplicada y sesión generada.")
+            messages.success(request, "Conciliacion manual aplicada y sesion generada.")
         except ValidationError as exc:
             messages.error(request, "; ".join(exc.messages))
         return redirect("attendance-reconciliation")

@@ -72,7 +72,7 @@
         <div class="col-md-4">
           <div class="card shadow-sm lookup-stat-card">
             <div class="card-body">
-              <span class="lookup-stat-label">Horas extra (h)</span>
+              <span class="lookup-stat-label">Horas extra aprobadas (h)</span>
               <div class="lookup-stat-value">{{ result.metrics.approved_overtime_minutes|minutes_to_hours }}</div>
             </div>
           </div>
@@ -88,7 +88,7 @@
         <div class="col-md-4">
           <div class="card shadow-sm lookup-stat-card">
             <div class="card-body">
-              <span class="lookup-stat-label">Pendientes (h)</span>
+              <span class="lookup-stat-label">Horas extra por aprobar (h)</span>
               <div class="lookup-stat-value">{{ result.metrics.pending_overtime_minutes|minutes_to_hours }}</div>
             </div>
           </div>
@@ -96,8 +96,16 @@
         <div class="col-md-4">
           <div class="card shadow-sm lookup-stat-card">
             <div class="card-body">
-              <span class="lookup-stat-label">Penalizaciones (h)</span>
-              <div class="lookup-stat-value">{{ result.metrics.penalty_minutes|minutes_to_hours }}</div>
+              <span class="lookup-stat-label">Anotaciones (h)</span>
+              <div class="lookup-stat-value">{{ result.metrics.annotation_delta_minutes|minutes_to_hours }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card shadow-sm lookup-stat-card border-warning-subtle">
+            <div class="card-body">
+              <span class="lookup-stat-label">Faltan para 192 h</span>
+              <div class="lookup-stat-value text-warning-emphasis">{{ result.metrics.remaining_minutes|minutes_to_hours }}</div>
             </div>
           </div>
         </div>
@@ -131,8 +139,9 @@
             `Entrada` y `Salida` muestran la hora exacta registrada;
             `Normales` son horas dentro del turno;
             `Extra` son horas fuera del turno;
-            `Penalización` son horas descontadas;
+            `Anotaciones` corresponden a ajustes manuales de horas;
             `Retraso` es tardanza frente al inicio esperado.
+            Si aparece `Exento`, hubo una excepción activa y ese retardo no se contó.
           </div>
           <div class="table-responsive">
             <table class="table table-sm table-hover lookup-history-table">
@@ -143,7 +152,6 @@
                   <th>Salida</th>
                   <th>Normales (h)</th>
                   <th>Extra (h)</th>
-                  <th>Penalización (h)</th>
                   <th>Retraso (h)</th>
                   <th>Estado extra</th>
                 </tr>
@@ -156,8 +164,12 @@
                     <td class="text-center">{{ session.actual_end|time:"H:i:s" }}</td>
                     <td class="text-center">{{ session.normal_minutes|minutes_to_hours }}</td>
                     <td class="text-center">{{ session.overtime_minutes|minutes_to_hours }}</td>
-                    <td class="text-center">{{ session.penalty_minutes|minutes_to_hours }}</td>
-                    <td class="text-center">{{ session.late_minutes|minutes_to_hours }}</td>
+                    <td class="text-center">
+                      {{ session.late_minutes|minutes_to_hours }}
+                      {% if session.lateness_excused %}
+                        <div><span class="badge text-bg-info mt-1">Exento</span></div>
+                      {% endif %}
+                    </td>
                     <td>
                       {% if session.overtime_status == "approved" %}
                         <span class="badge text-bg-success">{{ session.get_overtime_status_display }}</span>
@@ -168,10 +180,16 @@
                       {% else %}
                         <span class="badge text-bg-secondary">{{ session.get_overtime_status_display }}</span>
                       {% endif %}
+                      {% if session.overtime_auto_approved and session.overtime_exception %}
+                        <div class="small text-muted mt-1">Extra: {{ session.overtime_exception.name }}</div>
+                      {% endif %}
+                      {% if session.lateness_excused and session.lateness_exception %}
+                        <div class="small text-muted mt-1">Retraso: {{ session.lateness_exception.name }}</div>
+                      {% endif %}
                     </td>
                   </tr>
                 {% empty %}
-                  <tr><td class="text-center text-muted py-4" colspan="8">Sin historial.</td></tr>
+                  <tr><td class="text-center text-muted py-4" colspan="7">Sin historial.</td></tr>
                 {% endfor %}
               </tbody>
             </table>

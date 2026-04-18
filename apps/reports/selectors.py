@@ -7,14 +7,17 @@ from django.db.models import Case, Count, IntegerField, Q, Sum, Value, When
 from django.db.models.functions import Coalesce
 
 from apps.annotations.models import Annotation
+from apps.annotations.selectors import visible_annotations_for_user
 from apps.attendance.selectors import raw_history_for_user
+from apps.common.choices import DepartmentChoices
 from apps.common.choices import OvertimeStatusChoices, UserRoleChoices
-from apps.monitors.selectors import active_monitor_by_code_and_department, visible_monitors_for_user
+from apps.monitors.selectors import active_monitor_by_code, visible_monitors_for_user
 from apps.notifications.selectors import visible_notifications_for_user
 from apps.work_sessions.models import WorkSession
-import math
 
 MEMORANDUM_THRESHOLD = 3
+MONITOR_TARGET_HOURS = 192
+MONITOR_TARGET_MINUTES = MONITOR_TARGET_HOURS * 60
 
 
 def _minutes_to_hours(value) -> str:
@@ -82,19 +85,23 @@ def aggregate_monitor_metrics(*, monitor, start_date: Optional[date] = None, end
     net_total_minutes = (
         session_totals["normal_minutes"]
         + session_totals["approved_overtime_minutes"]
-        - session_totals["penalty_minutes"]
+        + annotation_delta_minutes
     )
+    remaining_minutes = max(MONITOR_TARGET_MINUTES - net_total_minutes, 0)
     return {
         **session_totals,
         "annotation_delta_minutes": annotation_delta_minutes,
         "total_minutes": total_minutes,
         "net_total_minutes": net_total_minutes,
+        "remaining_minutes": remaining_minutes,
         "has_memorandum": session_totals["late_count"] >= MEMORANDUM_THRESHOLD,
     }
 
 
-def build_dashboard_context(user) -> dict:
+def build_monitor_rows_for_user(user, department: Optional[str] = None) -> list[dict]:
     monitors = visible_monitors_for_user(user).order_by("department", "full_name")
+    if department:
+        monitors = monitors.filter(department=department)
     monitor_rows = []
     for monitor in monitors:
         metrics = aggregate_monitor_metrics(monitor=monitor)
@@ -105,11 +112,25 @@ def build_dashboard_context(user) -> dict:
                 "normal_hours": _minutes_to_hours(metrics["normal_minutes"]),
                 "approved_overtime_hours": _minutes_to_hours(metrics["approved_overtime_minutes"]),
                 "pending_overtime_hours": _minutes_to_hours(metrics["pending_overtime_minutes"]),
-                "penalty_hours": _minutes_to_hours(metrics["penalty_minutes"]),
+                "annotation_hours": _minutes_to_hours(metrics["annotation_delta_minutes"]),
                 "total_hours": _minutes_to_hours(metrics["net_total_minutes"]),
+                "remaining_hours": _minutes_to_hours(metrics["remaining_minutes"]),
             }
         )
         monitor_rows.append({"monitor": monitor, **metrics})
+    return monitor_rows
+
+
+def available_dashboard_departments_for_user(user) -> list[tuple[str, str]]:
+    departments = []
+    values = {row[0]: row[1] for row in DepartmentChoices.choices}
+    for department in visible_monitors_for_user(user).order_by("department").values_list("department", flat=True).distinct():
+        departments.append((department, values.get(department, department)))
+    return departments
+
+
+def build_dashboard_context(user) -> dict:
+    monitor_rows = build_monitor_rows_for_user(user)
     pending_overtime = (
         WorkSession.objects.select_related("monitor")
         .filter(overtime_status=OvertimeStatusChoices.PENDING)
@@ -118,29 +139,35 @@ def build_dashboard_context(user) -> dict:
     if user.role != UserRoleChoices.ADMIN:
         pending_overtime = pending_overtime.filter(monitor__department=user.department)
 
-    recent_raw_records = raw_history_for_user(user)
-    notifications = visible_notifications_for_user(user)[:10]
+    recent_raw_records = raw_history_for_user(user).order_by("-work_day", "-created_at")
+    recent_annotations = visible_annotations_for_user(user).order_by("-occurred_on", "-created_at")[:8]
+    notifications = visible_notifications_for_user(user).order_by("-created_at")[:10]
 
     return {
         "monitor_rows": monitor_rows,
-        "pending_overtime": pending_overtime[:20],
+        "pending_overtime": pending_overtime[:12],
         "recent_raw_records": recent_raw_records,
+        "recent_annotations": recent_annotations,
         "notifications": notifications,
     }
 
 
-def public_monitor_lookup(*, codigo_estudiante: str, department: str):
-    monitor = active_monitor_by_code_and_department(codigo_estudiante, department)
+def monitor_lookup_result(*, monitor):
     if not monitor:
         return None
     metrics = aggregate_monitor_metrics(monitor=monitor)
     recent_sessions = (
         WorkSession.objects.filter(monitor=monitor)
-        .select_related("raw_record")
-        .order_by("-work_day", "-actual_start")[:20]
+        .select_related("raw_record", "lateness_exception")
+        .order_by("-work_day", "-actual_start")
     )
     return {
         "monitor": monitor,
         "metrics": metrics,
         "recent_sessions": recent_sessions,
     }
+
+
+def public_monitor_lookup(*, codigo_estudiante: str):
+    monitor = active_monitor_by_code(codigo_estudiante)
+    return monitor_lookup_result(monitor=monitor)

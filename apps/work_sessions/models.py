@@ -30,6 +30,14 @@ class WorkSession(BaseModel):
     penalty_minutes = models.PositiveIntegerField(default=0)
     late_minutes = models.PositiveIntegerField(default=0)
     is_late = models.BooleanField(default=False, db_index=True)
+    lateness_excused = models.BooleanField(default=False, db_index=True)
+    lateness_exception = models.ForeignKey(
+        "schedules.ScheduleException",
+        on_delete=models.SET_NULL,
+        related_name="work_sessions",
+        null=True,
+        blank=True,
+    )
     session_state = models.CharField(
         max_length=20,
         choices=SessionStateChoices.choices,
@@ -40,6 +48,14 @@ class WorkSession(BaseModel):
         choices=OvertimeStatusChoices.choices,
         default=OvertimeStatusChoices.NOT_APPLICABLE,
         db_index=True,
+    )
+    overtime_auto_approved = models.BooleanField(default=False, db_index=True)
+    overtime_exception = models.ForeignKey(
+        "schedules.ScheduleException",
+        on_delete=models.SET_NULL,
+        related_name="overtime_work_sessions",
+        null=True,
+        blank=True,
     )
     overtime_reviewed_by = models.ForeignKey(
         "users.User",

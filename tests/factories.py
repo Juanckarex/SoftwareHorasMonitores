@@ -16,7 +16,7 @@ from apps.common.choices import (
 )
 from apps.monitors.models import Monitor
 from apps.reports.models import MonitorReportSnapshot
-from apps.schedules.models import Schedule
+from apps.schedules.models import Schedule, ScheduleException
 from apps.work_sessions.models import WorkSession
 
 User = get_user_model()
@@ -72,6 +72,20 @@ class ScheduleFactory(factory.django.DjangoModelFactory):
     is_active = True
 
 
+class ScheduleExceptionFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = ScheduleException
+
+    name = factory.Sequence(lambda n: "Excepcion {0}".format(n))
+    description = "No contar retardos"
+    start_date = date(2026, 4, 13)
+    end_date = date(2026, 4, 20)
+    department = DepartmentChoices.PHYSICS
+    ignore_lateness = True
+    approve_overtime = False
+    is_active = True
+
+
 class AttendanceImportJobFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = AttendanceImportJob
@@ -117,7 +131,11 @@ class WorkSessionFactory(factory.django.DjangoModelFactory):
     penalty_minutes = 0
     late_minutes = 0
     is_late = False
+    lateness_excused = False
+    lateness_exception = None
     overtime_status = OvertimeStatusChoices.NOT_APPLICABLE
+    overtime_auto_approved = False
+    overtime_exception = None
 
 
 class AnnotationFactory(factory.django.DjangoModelFactory):

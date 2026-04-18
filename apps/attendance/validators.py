@@ -1,3 +1,4 @@
+import re
 from datetime import date, datetime, time
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -5,19 +6,34 @@ from typing import Dict, List, Optional
 from django.core.exceptions import ValidationError
 from django.utils.dateparse import parse_date, parse_datetime, parse_time
 
+from apps.common.utils import normalize_text
+
 SUPPORTED_EXTENSIONS = {".xlsx", ".xlsm"}
 HEADER_ALIASES = {
     "departamento": "department",
     "nro._usuario": "num_user",
+    "nro_usuario": "num_user",
+    "numero_de_usuario": "num_user",
+    "numero_usuario": "num_user",
     "id_de_usuario": "id_user",
+    "id_usuario": "id_user",
     "nombre": "full_name",
     "fecha_inicio": "entry_at",
     "fecha_fin": "exit_at",
-    "descripción_de_la_excepción": "description",
+    "descripciÃ³n_de_la_excepciÃ³n": "description",
+    "descripcion_de_la_excepcion": "description",
+    "descripci_n_de_la_excepci_n": "description",
+    "descripcion": "description",
+    "description": "description",
     "tiempo_trabajado": "worked_time",
-    "días_de_trabajo": "days_worked",
+    "dÃ­as_de_trabajo": "days_worked",
+    "dias_de_trabajo": "days_worked",
+    "d_as_de_trabajo": "days_worked",
+    "days_worked": "days_worked",
     "tiempo_de_trabajo": "working_time",
+    "working_time": "working_time",
     "observaciones": "observations",
+    "observations": "observations",
 }
 
 
@@ -27,17 +43,32 @@ def validate_excel_extension(file_name: str) -> None:
 
 
 def normalize_header(value: str) -> str:
-    return " ".join((value or "").strip().lower().replace(" ", "_").split())
+    normalized = normalize_text(str(value or ""))
+    normalized = normalized.replace(" ", "_").replace("-", "_").replace("/", "_")
+    normalized = re.sub(r"[^a-z0-9._]+", "_", normalized)
+    normalized = re.sub(r"_+", "_", normalized)
+    return normalized.strip("_.")
 
 
 def resolve_headers(headers: List[str]) -> Dict[str, int]:
     mapping: Dict[str, int] = {}
     for index, header in enumerate(headers):
-        # print(f"{header} : {normalize_header(str(header))}")
         alias = HEADER_ALIASES.get(normalize_header(str(header)))
         if alias and alias not in mapping:
             mapping[alias] = index
-    missing = {"department", "num_user", "id_user", "full_name", "entry_at", "exit_at", "description", "worked_time", "days_worked", "working_time", "observations"} - set(mapping)
+    missing = {
+        "Departmento",
+        "num_user",
+        "id_user",
+        "full_name",
+        "entry_at",
+        "exit_at",
+        "description",
+        "worked_time",
+        "days_worked",
+        "working_time",
+        "observations",
+    } - set(mapping)
     if missing:
         raise ValidationError(f"Encabezados faltantes en el Excel: {', '.join(sorted(missing))}.")
     return mapping

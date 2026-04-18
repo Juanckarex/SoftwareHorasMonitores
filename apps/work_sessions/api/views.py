@@ -25,6 +25,7 @@ class WorkSessionViewSet(viewsets.ReadOnlyModelViewSet):
                 reviewer=request.user,
                 decision=serializer.validated_data["decision"],
                 note=serializer.validated_data.get("note", ""),
+                penalize_on_reject=serializer.validated_data.get("penalize_on_reject", True),
             )
         except DjangoValidationError as exc:
             raise exceptions.ValidationError(exc.messages)

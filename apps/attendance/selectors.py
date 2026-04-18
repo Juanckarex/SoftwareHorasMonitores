@@ -9,7 +9,13 @@ from apps.attendance.models import AttendanceImportJob, AttendanceRawRecord
 def _department_tokens(department: str) -> List[str]:
     mapping = {
         "physics": ["fisica", "physics"],
-        "informatics_labs": ["informatica", "salas de informatica", "informatics labs"],
+        "informatics_labs": [
+            "informatica",
+            "salas de informatica",
+            "aulas de software",
+            "monitores aulas de software",
+            "informatics labs",
+        ],
         "electrical": ["electrica", "electrical"],
     }
     return mapping.get(department, [department])

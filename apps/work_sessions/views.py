@@ -14,7 +14,7 @@ class OvertimeReviewListView(AdminOrLeaderRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["sessions"] = pending_overtime_sessions_for_user(self.request.user)[:100]
+        context["sessions"] = pending_overtime_sessions_for_user(self.request.user).order_by("-work_day", "monitor__full_name")
         return context
 
     def post(self, request, *args, **kwargs):
@@ -25,6 +25,7 @@ class OvertimeReviewListView(AdminOrLeaderRequiredMixin, TemplateView):
                 reviewer=request.user,
                 decision=request.POST.get("decision", ""),
                 note=request.POST.get("note", ""),
+                penalize_on_reject=request.POST.get("penalize_on_reject") == "on",
             )
             messages.success(request, "Revisión de horas extra registrada.")
         except ValidationError as exc:
