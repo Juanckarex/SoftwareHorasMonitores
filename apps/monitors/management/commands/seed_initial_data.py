@@ -16,6 +16,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         password = os.getenv("SEED_DEFAULT_PASSWORD", "ChangeMe123!")
+        created_count = 0
+        updated_count = 0
 
         users = [
             {
@@ -74,7 +76,11 @@ class Command(BaseCommand):
             user.set_password(password)
             user.save(update_fields=["password"])
             if created:
+                created_count += 1
                 self.stdout.write(self.style.SUCCESS("Usuario creado: {0}".format(user.username)))
+            else:
+                updated_count += 1
+                self.stdout.write("Usuario actualizado: {0}".format(user.username))
 
         monitors = [
             ("20230001", "Ana Torres", DepartmentChoices.PHYSICS),
@@ -104,5 +110,11 @@ class Command(BaseCommand):
                     end_time=time(hour=12),
                 )
 
-        self.stdout.write(self.style.SUCCESS("Datos semilla cargados."))
-
+        self.stdout.write(
+            self.style.SUCCESS(
+                "Datos semilla cargados. Usuarios creados: {0}. Usuarios actualizados: {1}.".format(
+                    created_count,
+                    updated_count,
+                )
+            )
+        )
