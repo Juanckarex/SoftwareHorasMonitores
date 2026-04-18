@@ -8,12 +8,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 env = environ.Env(
     DEBUG=(bool, False),
 )
-environ.Env.read_env(BASE_DIR / ".env")
+if (BASE_DIR / ".env").exists():
+    environ.Env.read_env(BASE_DIR / ".env")
 
 SECRET_KEY = env("SECRET_KEY", default="unsafe-secret-key")
 DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+APP_ENV = env("APP_ENV", default="local")
+LOG_LEVEL = env("LOG_LEVEL", default="INFO")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -67,16 +70,13 @@ WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'monitores',
-        'USER': 'postgres',
-        'PASSWORD': 'postgres',
-        'HOST': 'localhost',
-        'PORT': '5432',        
-    },
+    "default": env.db(
+        "DATABASE_URL",
+        default="postgres://postgres:postgres@localhost:5432/monitores",
+    ),
 }
-DATABASES["default"]["CONN_MAX_AGE"] = 60
+DATABASES["default"]["CONN_MAX_AGE"] = env.int("DATABASE_CONN_MAX_AGE", default=60)
+DATABASES["default"]["CONN_HEALTH_CHECKS"] = env.bool("DATABASE_CONN_HEALTH_CHECKS", default=True)
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -157,7 +157,7 @@ LOGGING = {
     "disable_existing_loggers": False,
     "formatters": {
         "structured": {
-            "format": "level=%(levelname)s logger=%(name)s message=%(message)s",
+            "format": f"time=%(asctime)s level=%(levelname)s env={APP_ENV} logger=%(name)s message=%(message)s",
         },
     },
     "handlers": {
@@ -168,6 +168,6 @@ LOGGING = {
     },
     "root": {
         "handlers": ["console"],
-        "level": "INFO",
+        "level": LOG_LEVEL,
     },
 }

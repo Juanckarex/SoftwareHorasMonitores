@@ -6,6 +6,7 @@ from django.shortcuts import redirect
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from apps.common.web import health_check
 from apps.attendance.views import AttendanceImportView, ReconciliationQueueView
 from apps.reports.views import LeaderDashboardView, PublicMonitorLookupView
 from apps.work_sessions.views import OvertimeReviewListView
@@ -17,6 +18,7 @@ def root_redirect(_request):
 
 urlpatterns = [
     path("", root_redirect, name="root"),
+    path("healthz/", health_check, name="healthz"),
     path("admin/", admin.site.urls),
     path("login/", LoginView.as_view(template_name="registration/login.html"), name="login"),
     path("logout/", LogoutView.as_view(next_page="public-monitor-lookup"), name="logout"),
