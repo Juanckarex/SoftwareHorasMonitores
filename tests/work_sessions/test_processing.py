@@ -146,6 +146,33 @@ def test_process_raw_record_ignores_lateness_when_exception_is_active_for_depart
 
 
 @pytest.mark.django_db
+def test_process_raw_record_auto_approves_overtime_when_exception_enables_it():
+    monitor = MonitorFactory(full_name="Ana Torres", department=DepartmentChoices.PHYSICS)
+    ScheduleFactory(monitor=monitor, weekday=0)
+    exception = ScheduleExceptionFactory(
+        department=DepartmentChoices.PHYSICS,
+        start_date=datetime(2026, 4, 13).date(),
+        end_date=datetime(2026, 4, 19).date(),
+        ignore_lateness=False,
+        approve_overtime=True,
+    )
+    raw_record = AttendanceRawRecordFactory(
+        monitor=monitor,
+        raw_full_name="Ana Torres",
+        work_day=datetime(2026, 4, 13).date(),
+        entry_at=timezone.make_aware(datetime(2026, 4, 13, 8, 0)),
+        exit_at=timezone.make_aware(datetime(2026, 4, 13, 12, 30)),
+    )
+
+    session = process_raw_record_to_session(raw_record=raw_record)
+
+    assert session.overtime_minutes == 30
+    assert session.overtime_status == "approved"
+    assert session.overtime_auto_approved is True
+    assert session.overtime_exception == exception
+
+
+@pytest.mark.django_db
 def test_process_raw_record_keeps_lateness_when_exception_belongs_to_another_department():
     monitor = MonitorFactory(full_name="Ana Torres", department=DepartmentChoices.PHYSICS)
     ScheduleFactory(monitor=monitor, weekday=0)
@@ -202,6 +229,37 @@ def test_sync_sessions_for_exception_change_retroactively_excuses_existing_laten
 
 
 @pytest.mark.django_db
+def test_sync_sessions_for_exception_change_retroactively_approves_pending_overtime():
+    monitor = MonitorFactory(full_name="Ana Torres", department=DepartmentChoices.PHYSICS)
+    ScheduleFactory(monitor=monitor, weekday=0)
+    raw_record = AttendanceRawRecordFactory(
+        monitor=monitor,
+        raw_full_name="Ana Torres",
+        work_day=datetime(2026, 4, 13).date(),
+        entry_at=timezone.make_aware(datetime(2026, 4, 13, 8, 0)),
+        exit_at=timezone.make_aware(datetime(2026, 4, 13, 12, 30)),
+    )
+    session = process_raw_record_to_session(raw_record=raw_record)
+    assert session.overtime_status == "pending"
+
+    exception = ScheduleExceptionFactory(
+        department=DepartmentChoices.PHYSICS,
+        start_date=datetime(2026, 4, 13).date(),
+        end_date=datetime(2026, 4, 19).date(),
+        ignore_lateness=False,
+        approve_overtime=True,
+    )
+
+    updated_sessions = sync_sessions_for_exception_change(current_exception=exception)
+    session.refresh_from_db()
+
+    assert updated_sessions == 1
+    assert session.overtime_status == "approved"
+    assert session.overtime_auto_approved is True
+    assert session.overtime_exception == exception
+
+
+@pytest.mark.django_db
 def test_sync_sessions_for_exception_change_restores_lateness_after_exception_removal():
     monitor = MonitorFactory(full_name="Ana Torres", department=DepartmentChoices.PHYSICS)
     ScheduleFactory(monitor=monitor, weekday=0)
@@ -241,3 +299,46 @@ def test_sync_sessions_for_exception_change_restores_lateness_after_exception_re
     assert session.is_late is True
     assert session.lateness_excused is False
     assert session.lateness_exception is None
+
+
+@pytest.mark.django_db
+def test_sync_sessions_for_exception_change_reverts_auto_approved_overtime_when_exception_is_removed():
+    monitor = MonitorFactory(full_name="Ana Torres", department=DepartmentChoices.PHYSICS)
+    ScheduleFactory(monitor=monitor, weekday=0)
+    raw_record = AttendanceRawRecordFactory(
+        monitor=monitor,
+        raw_full_name="Ana Torres",
+        work_day=datetime(2026, 4, 13).date(),
+        entry_at=timezone.make_aware(datetime(2026, 4, 13, 8, 0)),
+        exit_at=timezone.make_aware(datetime(2026, 4, 13, 12, 30)),
+    )
+    session = process_raw_record_to_session(raw_record=raw_record)
+    exception = ScheduleExceptionFactory(
+        department=DepartmentChoices.PHYSICS,
+        start_date=datetime(2026, 4, 13).date(),
+        end_date=datetime(2026, 4, 19).date(),
+        ignore_lateness=False,
+        approve_overtime=True,
+    )
+    sync_sessions_for_exception_change(current_exception=exception)
+    session.refresh_from_db()
+    assert session.overtime_auto_approved is True
+
+    previous_state = {
+        "start_date": exception.start_date,
+        "end_date": exception.end_date,
+        "department": exception.department,
+    }
+    exception.delete()
+
+    updated_sessions = sync_sessions_for_exception_change(
+        previous_start_date=previous_state["start_date"],
+        previous_end_date=previous_state["end_date"],
+        previous_department=previous_state["department"],
+    )
+    session.refresh_from_db()
+
+    assert updated_sessions == 1
+    assert session.overtime_status == "pending"
+    assert session.overtime_auto_approved is False
+    assert session.overtime_exception is None

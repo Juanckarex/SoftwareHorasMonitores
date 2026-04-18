@@ -180,8 +180,11 @@
                       {% else %}
                         <span class="badge text-bg-secondary">{{ session.get_overtime_status_display }}</span>
                       {% endif %}
+                      {% if session.overtime_auto_approved and session.overtime_exception %}
+                        <div class="small text-muted mt-1">Extra: {{ session.overtime_exception.name }}</div>
+                      {% endif %}
                       {% if session.lateness_excused and session.lateness_exception %}
-                        <div class="small text-muted mt-1">{{ session.lateness_exception.name }}</div>
+                        <div class="small text-muted mt-1">Retraso: {{ session.lateness_exception.name }}</div>
                       {% endif %}
                     </td>
                   </tr>

@@ -33,5 +33,6 @@ class ScheduleExceptionSerializer(serializers.ModelSerializer):
             "department",
             "department_label",
             "ignore_lateness",
+            "approve_overtime",
             "is_active",
         )

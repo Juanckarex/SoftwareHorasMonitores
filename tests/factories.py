@@ -82,6 +82,7 @@ class ScheduleExceptionFactory(factory.django.DjangoModelFactory):
     end_date = date(2026, 4, 20)
     department = DepartmentChoices.PHYSICS
     ignore_lateness = True
+    approve_overtime = False
     is_active = True
 
 
@@ -133,6 +134,8 @@ class WorkSessionFactory(factory.django.DjangoModelFactory):
     lateness_excused = False
     lateness_exception = None
     overtime_status = OvertimeStatusChoices.NOT_APPLICABLE
+    overtime_auto_approved = False
+    overtime_exception = None
 
 
 class AnnotationFactory(factory.django.DjangoModelFactory):

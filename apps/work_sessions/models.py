@@ -49,6 +49,14 @@ class WorkSession(BaseModel):
         default=OvertimeStatusChoices.NOT_APPLICABLE,
         db_index=True,
     )
+    overtime_auto_approved = models.BooleanField(default=False, db_index=True)
+    overtime_exception = models.ForeignKey(
+        "schedules.ScheduleException",
+        on_delete=models.SET_NULL,
+        related_name="overtime_work_sessions",
+        null=True,
+        blank=True,
+    )
     overtime_reviewed_by = models.ForeignKey(
         "users.User",
         on_delete=models.SET_NULL,

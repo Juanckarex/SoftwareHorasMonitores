@@ -55,6 +55,10 @@ class ScheduleException(BaseModel):
         default=True,
         help_text="Si está activo, los retardos dentro del rango no se contabilizan.",
     )
+    approve_overtime = models.BooleanField(
+        default=False,
+        help_text="Si esta activo, las horas extra dentro del rango quedan aprobadas automaticamente.",
+    )
     is_active = models.BooleanField(default=True, db_index=True)
 
     class Meta:

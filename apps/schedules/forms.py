@@ -24,6 +24,7 @@ class ScheduleExceptionForm(forms.ModelForm):
             "end_date",
             "department",
             "ignore_lateness",
+            "approve_overtime",
             "is_active",
         )
         widgets = {
@@ -38,6 +39,7 @@ class ScheduleExceptionForm(forms.ModelForm):
             "end_date": "Fecha final",
             "department": "Dependencia",
             "ignore_lateness": "No contar retrasos",
+            "approve_overtime": "Contar horas extra",
             "is_active": "Activa",
         }
 

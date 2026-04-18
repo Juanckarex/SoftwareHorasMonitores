@@ -15,7 +15,7 @@ from apps.common.utils import (
     normalize_session_start,
     overlap_in_minutes,
 )
-from apps.schedules.selectors import lateness_exception_for, schedule_for_monitor_and_day
+from apps.schedules.selectors import lateness_exception_for, overtime_exception_for, schedule_for_monitor_and_day
 from apps.work_sessions.events import OVERTIME_PENDING, OVERTIME_REVIEWED, SESSION_PROCESSED
 from apps.work_sessions.models import WorkSession
 
@@ -32,6 +32,17 @@ def _resolve_lateness(*, monitor, work_day, schedule, normalized_start):
             late = max(duration_in_minutes(normalized_start) - duration_in_minutes(schedule.start_time), 0)
 
     return late, lateness_excused, lateness_exception
+
+
+def _resolve_overtime_exception(*, monitor, work_day, overtime_minutes):
+    if overtime_minutes <= 0:
+        return OvertimeStatusChoices.NOT_APPLICABLE, False, None
+
+    overtime_exception = overtime_exception_for(monitor=monitor, day=work_day)
+    if overtime_exception is not None:
+        return OvertimeStatusChoices.APPROVED, True, overtime_exception
+
+    return OvertimeStatusChoices.PENDING, False, None
 
 
 @transaction.atomic
@@ -53,6 +64,46 @@ def sync_session_lateness(*, session: WorkSession) -> WorkSession:
             "is_late",
             "lateness_excused",
             "lateness_exception",
+            "updated_at",
+        ]
+    )
+    return session
+
+
+@transaction.atomic
+def sync_session_overtime_exception(*, session: WorkSession) -> WorkSession:
+    overtime_status, overtime_auto_approved, overtime_exception = _resolve_overtime_exception(
+        monitor=session.monitor,
+        work_day=session.work_day,
+        overtime_minutes=session.overtime_minutes,
+    )
+
+    if session.overtime_minutes <= 0:
+        session.overtime_status = OvertimeStatusChoices.NOT_APPLICABLE
+        session.overtime_auto_approved = False
+        session.overtime_exception = None
+    else:
+        should_auto_apply = overtime_exception is not None and (
+            session.overtime_status == OvertimeStatusChoices.PENDING or session.overtime_auto_approved
+        )
+        should_revert_auto = overtime_exception is None and session.overtime_auto_approved
+
+        if should_auto_apply:
+            session.overtime_status = overtime_status
+            session.overtime_auto_approved = overtime_auto_approved
+            session.overtime_exception = overtime_exception
+        elif should_revert_auto:
+            session.overtime_status = OvertimeStatusChoices.PENDING
+            session.overtime_auto_approved = False
+            session.overtime_exception = None
+        elif session.overtime_auto_approved:
+            session.overtime_exception = overtime_exception
+
+    session.save(
+        update_fields=[
+            "overtime_status",
+            "overtime_auto_approved",
+            "overtime_exception",
             "updated_at",
         ]
     )
@@ -107,6 +158,7 @@ def sync_sessions_for_exception_change(
     updated_sessions = 0
     for session in queryset.iterator():
         sync_session_lateness(session=session)
+        sync_session_overtime_exception(session=session)
         updated_sessions += 1
     return updated_sessions
 
@@ -151,8 +203,10 @@ def process_raw_record_to_session(*, raw_record):
         session_state = SessionStateChoices.WITHOUT_SCHEDULE
 
     overtime = max(total_minutes - normal, 0)
-    overtime_status = (
-        OvertimeStatusChoices.PENDING if overtime > 0 else OvertimeStatusChoices.NOT_APPLICABLE
+    overtime_status, overtime_auto_approved, overtime_exception = _resolve_overtime_exception(
+        monitor=raw_record.monitor,
+        work_day=raw_record.work_day,
+        overtime_minutes=overtime,
     )
 
     session = WorkSession.objects.create(
@@ -174,6 +228,8 @@ def process_raw_record_to_session(*, raw_record):
         lateness_exception=lateness_exception,
         session_state=session_state,
         overtime_status=overtime_status,
+        overtime_auto_approved=overtime_auto_approved,
+        overtime_exception=overtime_exception,
     )
 
     raw_record.processed_at = timezone.now()
@@ -226,11 +282,15 @@ def review_overtime(
     note = (note or "").strip()
     if decision == "approve":
         session.overtime_status = OvertimeStatusChoices.APPROVED
+        session.overtime_auto_approved = False
+        session.overtime_exception = None
         session.penalty_minutes = 0
     elif decision == "reject":
         if not note:
             raise ValidationError("Rechazar horas extra requiere una anotación obligatoria.")
         session.overtime_status = OvertimeStatusChoices.REJECTED
+        session.overtime_auto_approved = False
+        session.overtime_exception = None
         session.penalty_minutes = 0
         if penalize_on_reject:
             from apps.annotations.services import create_annotation
@@ -254,6 +314,8 @@ def review_overtime(
     session.save(
         update_fields=[
             "overtime_status",
+            "overtime_auto_approved",
+            "overtime_exception",
             "penalty_minutes",
             "overtime_reviewed_by",
             "overtime_reviewed_at",

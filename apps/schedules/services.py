@@ -181,6 +181,7 @@ def save_schedule_exception(
     end_date,
     department,
     ignore_lateness: bool,
+    approve_overtime: bool,
     is_active: bool,
 ):
     _validate_exception_scope(actor=actor, department=department)
@@ -200,6 +201,7 @@ def save_schedule_exception(
     exception.end_date = end_date
     exception.department = department
     exception.ignore_lateness = ignore_lateness
+    exception.approve_overtime = approve_overtime
     exception.is_active = is_active
     exception.full_clean()
     exception.save()

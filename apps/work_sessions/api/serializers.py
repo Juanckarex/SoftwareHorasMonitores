@@ -6,6 +6,7 @@ from apps.work_sessions.models import WorkSession
 class WorkSessionSerializer(serializers.ModelSerializer):
     monitor_name = serializers.CharField(source="monitor.full_name", read_only=True)
     lateness_exception_name = serializers.CharField(source="lateness_exception.name", read_only=True)
+    overtime_exception_name = serializers.CharField(source="overtime_exception.name", read_only=True)
 
     class Meta:
         model = WorkSession
@@ -30,6 +31,9 @@ class WorkSessionSerializer(serializers.ModelSerializer):
             "lateness_exception_name",
             "session_state",
             "overtime_status",
+            "overtime_auto_approved",
+            "overtime_exception",
+            "overtime_exception_name",
             "overtime_review_note",
         )
 

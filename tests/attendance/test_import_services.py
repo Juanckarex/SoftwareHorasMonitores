@@ -145,6 +145,57 @@ def test_import_workbook_skips_duplicate_rows_from_reimport():
 
 
 @pytest.mark.django_db
+def test_import_workbook_skips_duplicate_rows_when_informatics_department_label_changes():
+    uploader = UserFactory(department=DepartmentChoices.INFORMATICS_LABS)
+    monitor = MonitorFactory(full_name="Ana Torres", department=DepartmentChoices.INFORMATICS_LABS)
+    upsert_schedule(monitor=monitor, weekday=0, start_time=time(hour=8), end_time=time(hour=12))
+
+    first_rows = [[
+        "Monitores",
+        "2001",
+        "1050",
+        "Ana Torres",
+        datetime(2026, 4, 13, 8, 0),
+        datetime(2026, 4, 13, 12, 30),
+        "Overtime",
+        "04:30:00",
+        1,
+        "04:30:00",
+        "",
+    ]]
+    second_rows = [[
+        "Monitores Aulas de Software",
+        "2001",
+        "1050",
+        "Ana Torres",
+        datetime(2026, 4, 13, 8, 0),
+        datetime(2026, 4, 13, 12, 30),
+        "Overtime",
+        "04:30:00",
+        1,
+        "04:30:00",
+        "",
+    ]]
+
+    first_job = create_import_job(uploaded_file=build_croschex_file(rows=first_rows), uploaded_by=uploader)
+    import_workbook(first_job)
+
+    second_job = create_import_job(uploaded_file=build_croschex_file(rows=second_rows), uploaded_by=uploader)
+    import_workbook(second_job)
+
+    raw_records = AttendanceRawRecord.objects.filter(
+        normalized_full_name=monitor.normalized_full_name,
+        work_day=date(2026, 4, 13),
+        entry_at=time(hour=8),
+        exit_at=time(hour=12, minute=30),
+    )
+
+    assert first_job.imported_rows == 1
+    assert second_job.imported_rows == 0
+    assert raw_records.count() == 1
+
+
+@pytest.mark.django_db
 def test_leader_cannot_upload_attendance_from_other_department():
     uploader = UserFactory(department=DepartmentChoices.PHYSICS)
     excel_file = build_croschex_file(

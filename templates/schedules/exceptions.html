@@ -167,7 +167,11 @@
                   <td>
                     {% if row.item.ignore_lateness %}
                       <span class="badge text-bg-info">No contar retrasos</span>
-                    {% else %}
+                    {% endif %}
+                    {% if row.item.approve_overtime %}
+                      <span class="badge text-bg-success">Contar horas extra</span>
+                    {% endif %}
+                    {% if not row.item.ignore_lateness and not row.item.approve_overtime %}
                       <span class="badge text-bg-warning">Solo informativa</span>
                     {% endif %}
                   </td>

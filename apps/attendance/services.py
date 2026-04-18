@@ -27,6 +27,25 @@ DEPARTMENT_LABELS = {
     DepartmentChoices.ELECTRICAL: "Monitores Laboratorios",
 }
 
+DEPARTMENT_MAPPING = {
+    "monitores": "informatics_labs",
+    "monitores aulas de software": "informatics_labs",
+    "aulas de software": "informatics_labs",
+    "monitorias": "informatics_labs",
+    "fisica": "physics",
+    "monitores fisica": "physics",
+    "physics": "physics",
+    "monitores aulas de sistemas": "informatics_labs",
+    "salas informatica": "informatics_labs",
+    "informatica": "informatics_labs",
+    "informatics labs": "informatics_labs",
+    "monitores laboratorios": "electrical",
+    "monitores laboratorio": "electrical",
+    "laboratorios": "electrical",
+    "electrica": "electrical",
+    "electrical": "electrical",
+}
+
 
 def _rewind_uploaded_file(uploaded_file) -> None:
     if hasattr(uploaded_file, "seek"):
@@ -145,10 +164,12 @@ def _existing_raw_record_for_import(
     entry_at,
     exit_at,
 ) -> Optional[AttendanceRawRecord]:
+    normalized_department = normalize_text(raw_department)
+    department_aliases = _department_aliases(normalized_department)
     return (
         AttendanceRawRecord.objects.filter(
             normalized_full_name=normalize_text(raw_full_name),
-            normalized_department=normalize_text(raw_department),
+            normalized_department__in=department_aliases,
             work_day=work_day,
             entry_at=entry_at,
             exit_at=exit_at,
@@ -174,23 +195,18 @@ def _match_monitor(raw_record: AttendanceRawRecord) -> Tuple[Optional[Monitor], 
 
 
 def _map_department(normalized_department: str) -> Optional[str]:
-    mapping = {
-        "monitores": "informatics_labs",
-        "monitorias": "informatics_labs",
-        "fisica": "physics",
-        "monitores fisica": "physics",
-        "physics": "physics",
-        "Monitores Aulas de sistemas": "informatics_labs",
-        "salas informatica": "informatics_labs",
-        "informatica": "informatics_labs",
-        "informatics labs": "informatics_labs",
-        "monitores laboratorios": "electrical",
-        "monitores laboratorio": "electrical",
-        "laboratorios": "electrical",
-        "electrica": "electrical",
-        "electrical": "electrical",
+    return DEPARTMENT_MAPPING.get(normalized_department)
+
+
+def _department_aliases(normalized_department: str) -> set[str]:
+    mapped_department = _map_department(normalized_department)
+    if mapped_department is None:
+        return {normalized_department}
+    return {
+        alias
+        for alias, department in DEPARTMENT_MAPPING.items()
+        if department == mapped_department
     }
-    return mapping.get(normalized_department)
 
 
 @transaction.atomic
