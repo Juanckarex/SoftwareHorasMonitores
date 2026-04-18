@@ -1,3 +1,7 @@
+from redis import Redis
+
+from django.db import connections
+from django.http import JsonResponse
 from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.core.cache import cache
@@ -41,3 +45,33 @@ def enforce_public_lookup_limit(request, limit: int | None = None, window_second
     if current >= limit:
         raise PermissionDenied("Se alcanzó el límite de consultas por hora.")
     cache.set(cache_key, current + 1, timeout=window_seconds)
+
+
+def health_check(_request):
+    checks = {}
+    status = 200
+
+    try:
+        with connections["default"].cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+        checks["database"] = "ok"
+    except Exception as exc:  # pragma: no cover
+        status = 503
+        checks["database"] = f"error: {exc.__class__.__name__}"
+
+    try:
+        redis_client = Redis.from_url(settings.CELERY_BROKER_URL)
+        redis_client.ping()
+        checks["redis"] = "ok"
+    except Exception as exc:  # pragma: no cover
+        status = 503
+        checks["redis"] = f"error: {exc.__class__.__name__}"
+
+    return JsonResponse(
+        {
+            "status": "ok" if status == 200 else "degraded",
+            "checks": checks,
+        },
+        status=status,
+    )
