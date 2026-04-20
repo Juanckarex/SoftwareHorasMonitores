@@ -16,6 +16,7 @@ from apps.reports.views import (
 )
 from apps.schedules.views import ScheduleExceptionListView
 from apps.work_sessions.views import OvertimeReviewListView
+from apps.annotations.views import AnnotationManagementView
 
 
 def root_redirect(_request):
