@@ -35,6 +35,19 @@ HEADER_ALIASES = {
     "observaciones": "observations",
     "observations": "observations",
 }
+REQUIRED_HEADERS = {
+    "department": "Departamento",
+    "num_user": "Nro. usuario",
+    "id_user": "ID de usuario",
+    "full_name": "Nombre",
+    "entry_at": "Fecha inicio",
+    "exit_at": "Fecha fin",
+    "description": "Descripcion de la excepcion",
+    "worked_time": "Tiempo trabajado",
+    "days_worked": "Dias de trabajo",
+    "working_time": "Tiempo de trabajo",
+    "observations": "Observaciones",
+}
 
 
 def validate_excel_extension(file_name: str) -> None:
@@ -56,21 +69,13 @@ def resolve_headers(headers: List[str]) -> Dict[str, int]:
         alias = HEADER_ALIASES.get(normalize_header(str(header)))
         if alias and alias not in mapping:
             mapping[alias] = index
-    missing = {
-        "Departmento",
-        "num_user",
-        "id_user",
-        "full_name",
-        "entry_at",
-        "exit_at",
-        "description",
-        "worked_time",
-        "days_worked",
-        "working_time",
-        "observations",
-    } - set(mapping)
+    missing = [
+        label
+        for alias, label in REQUIRED_HEADERS.items()
+        if alias not in mapping
+    ]
     if missing:
-        raise ValidationError(f"Encabezados faltantes en el Excel: {', '.join(sorted(missing))}.")
+        raise ValidationError(f"Encabezados faltantes en el Excel: {', '.join(missing)}.")
     return mapping
 
 
